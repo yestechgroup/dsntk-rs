@@ -1,0 +1,10 @@
+{
+  "Employment type": "trial",
+  "Duration days": 90,
+  "Worker visa status": "AEWV",
+  "Union membership": false,
+  "Agreement signed before start": true,
+  "Notice period specified": true,
+  "Worker status": "new_hire",
+  "Organization size": 15
+}

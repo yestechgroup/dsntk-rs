@@ -9,6 +9,8 @@ mod exhaustive;
 mod full_model;
 pub mod input_data;
 pub mod item_definition;
+#[cfg(test)]
+mod tests;
 
 pub use compatibility::*;
 pub use diagrams::*;

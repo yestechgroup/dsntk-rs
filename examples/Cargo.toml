@@ -12,3 +12,9 @@ edition = { workspace = true }
 
 [dev-dependencies]
 walkdir = { workspace = true }
+dsntk-recognizer = { workspace = true }
+dsntk-model-evaluator = { workspace = true }
+dsntk-feel = { workspace = true }
+dsntk-model = { workspace = true }
+dsntk-feel-parser = { workspace = true }
+dsntk-feel-evaluator = { workspace = true }
