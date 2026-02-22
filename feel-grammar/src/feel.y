@@ -148,12 +148,12 @@ simple_expressions:
   ;
 
 simple_positive_unary_test:
-    LT endpoint {/* comparison_unary_lt */}
-  | LE endpoint {/* comparison_unary_le */}
-  | GT endpoint {/* comparison_unary_gt */}
-  | GE endpoint {/* comparison_unary_ge */}
-  | EQ endpoint {/* comparison_unary_eq */}
-  | NE endpoint {/* comparison_unary_ne */}
+    LT expression {/* comparison_unary_lt */}
+  | LE expression {/* comparison_unary_le */}
+  | GT expression {/* comparison_unary_gt */}
+  | GE expression {/* comparison_unary_ge */}
+  | EQ expression {/* comparison_unary_eq */}
+  | NE expression {/* comparison_unary_ne */}
   | interval
   ;
 
@@ -162,13 +162,17 @@ interval:
   ;
 
 interval_start:
-    LEFT_PAREN endpoint ELLIPSIS {/* interval_start */}
+    LEFT_PAREN ELLIPSIS {/* interval_empty_start */}
+  | RIGHT_BRACKET ELLIPSIS {/* interval_empty_start */}
+  | LEFT_PAREN endpoint ELLIPSIS {/* interval_start */}
   | RIGHT_BRACKET endpoint ELLIPSIS {/* interval_start */}
   | LEFT_BRACKET endpoint ELLIPSIS {/* interval_start */}
   ;
 
 interval_end:
-    endpoint RIGHT_PAREN {/* interval_end */}
+    RIGHT_PAREN {/* interval_empty_end */}
+  | LEFT_BRACKET {/* interval_empty_end */}
+  | endpoint RIGHT_PAREN {/* interval_end */}
   | endpoint LEFT_BRACKET {/* interval_end */}
   | endpoint RIGHT_BRACKET {/* interval_end */}
   ;

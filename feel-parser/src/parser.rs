@@ -1115,4 +1115,17 @@ impl ReduceActions for Parser<'_> {
     }
     Ok(())
   }
+  fn action_interval_empty_start(&mut self) -> Result<()> {
+    trace_action!(self, "interval_empty_start");
+    let closed = matches!(&self.yy_value_stack[self.yy_value_stack.len() - self.yy_len as usize], TokenValue::LeftBracket);
+    self.yy_node_stack.push(AstNode::IntervalStart(AstNode::Null.into(), closed));
+    Ok(())
+  }
+
+  fn action_interval_empty_end(&mut self) -> Result<()> {
+    trace_action!(self, "interval_empty_end");
+    let closed = matches!(&self.yy_value_stack[self.yy_value_stack.len() - 1], TokenValue::RightBracket);
+    self.yy_node_stack.push(AstNode::IntervalEnd(AstNode::Null.into(), closed));
+    Ok(())
+  }
 }
