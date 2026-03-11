@@ -219,8 +219,8 @@ fn test_age_edge_cases_evaluation_markdown() {
     _ => panic!("Expected string result for age 65, got: {}", result_65),
   }
 
-  // Additional test: 12 years old (should be junior)
-  let scope_12 = context(r#"{Birth Date: date("2013-01-15")}"#).into();
+  // Additional test: 11 years old (should be junior)
+  let scope_12 = context(r#"{Birth Date: date("2014-06-15")}"#).into();
   let evaluator = build_decision_table_evaluator(&scope_12, &decision_table).unwrap();
   let result_12 = evaluator(&scope_12);
 
@@ -301,8 +301,8 @@ fn test_age_edge_cases_evaluation() {
     _ => panic!("Expected string result for age 65, got: {}", result_65),
   }
 
-  // Additional test: 12 years old (should be junior)
-  let scope_12 = context(r#"{Birth Date: date("2013-01-15")}"#).into();
+  // Additional test: 11 years old (should be junior)
+  let scope_12 = context(r#"{Birth Date: date("2014-06-15")}"#).into();
   let evaluator = build_decision_table_evaluator(&scope_12, &decision_table).unwrap();
   let result_12 = evaluator(&scope_12);
 
