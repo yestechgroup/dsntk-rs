@@ -34,6 +34,7 @@ edition = "2021"
 [workspace.dependencies]
 actix-web = "4.10.2"
 antex = "0.0.8"
+atty = "0.2.14"
 base64 = "0.22.1"
 chrono = "0.4.40"
 chrono-tz = "0.10.1"

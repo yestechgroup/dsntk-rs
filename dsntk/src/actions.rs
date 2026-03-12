@@ -1,7 +1,8 @@
 //! # Command-line actions
 
 use crate::built_in_examples::*;
-use crate::errors::{err_create_directory, err_save_file};
+use crate::errors::{err_create_directory, err_directory_not_empty, err_not_a_tty, err_save_file, err_template_not_found};
+use crate::templates;
 use antex::{ColorMode, StyledText, Text};
 use clap::{arg, command, crate_version, Arg, ArgAction, ArgMatches, Command};
 use dsntk_common::{Jsonify, Result};
@@ -116,6 +117,12 @@ const COMMAND_EXS: AppCommand = AppCommand {
   name: "exs",
   about: "Save examples",
   display_order: 15,
+};
+
+const COMMAND_NEW: AppCommand = AppCommand {
+  name: "new",
+  about: "Create a new project from a template",
+  display_order: 16,
 };
 
 /// Supported decision table input file formats.
@@ -263,6 +270,17 @@ enum Action {
     /// Directory where examples are saved.
     String,
   ),
+  /// Create a new project from a template.
+  NewProject(
+    /// Optional template name.
+    Option<String>,
+    /// Optional output directory.
+    Option<String>,
+    /// Whether to list templates and exit.
+    bool,
+    /// Whether to force overwrite existing directory.
+    bool,
+  ),
   /// Do nothing, no action was specified.
   DoNothing,
 }
@@ -329,6 +347,10 @@ pub async fn do_action() -> std::io::Result<()> {
     Action::SaveExamples(root_dir) => {
       // Save the examples in the specified root directory.
       save_builtin_examples(&root_dir);
+      Ok(())
+    }
+    Action::NewProject(template_name, output_dir, list, force) => {
+      new_project(template_name.as_deref(), output_dir.as_deref(), list, force);
       Ok(())
     }
     Action::DoNothing => {
@@ -636,6 +658,16 @@ fn get_matches() -> ArgMatches {
         .display_order(COMMAND_EXS.display_order)
         .arg(arg!(<DIR>).help("Directory where examples are saved").action(ArgAction::Set).required(true).index(1)),
     )
+    // new - Create a new project from a template
+    .subcommand(
+      Command::new(COMMAND_NEW.name)
+        .about(COMMAND_NEW.about)
+        .display_order(COMMAND_NEW.display_order)
+        .arg(arg!(-l - -list).help("Print all available templates and exit").action(ArgAction::SetTrue).display_order(1))
+        .arg(arg!(-f - -force).help("Overwrite existing directory").action(ArgAction::SetTrue).display_order(2))
+        .arg(arg!([TEMPLATE]).help("Name of the template to scaffold").index(1))
+        .arg(arg!([OUTPUT_DIR]).help("Directory to create the project in [default: <TEMPLATE>]").index(2)),
+    )
     .get_matches()
 }
 
@@ -755,6 +787,15 @@ fn get_cli_action() -> Action {
     // generate examples
     Some(("exs", matches)) => {
       return Action::SaveExamples(match_string(matches, "DIR"));
+    }
+    // create new project from template
+    Some(("new", matches)) => {
+      return Action::NewProject(
+        match_optional_string(matches, "TEMPLATE"),
+        match_optional_string(matches, "OUTPUT_DIR"),
+        matches.get_flag("list"),
+        matches.get_flag("force"),
+      );
     }
     _ => {}
   }
@@ -1171,6 +1212,118 @@ fn list_types(dir: &str, check_only: bool) {
       }
     }
   }
+}
+
+/// Creates a new project from a built-in template.
+fn new_project(template_name: Option<&str>, output_dir: Option<&str>, list: bool, force: bool) {
+  if list {
+    list_templates();
+    return;
+  }
+  let name = match template_name {
+    Some(name) => name,
+    None => {
+      if atty::is(atty::Stream::Stdout) {
+        interactive_template_picker();
+      } else {
+        eprintln!("{}", err_not_a_tty());
+      }
+      return;
+    }
+  };
+  let template = match templates::get_template(name) {
+    Some(t) => t,
+    None => {
+      eprintln!("{}", err_template_not_found(name));
+      return;
+    }
+  };
+  let dest = Path::new(output_dir.unwrap_or(template.name));
+  match scaffold(template, dest, force) {
+    Ok(()) => {
+      println!("created project '{}' in '{}'", template.name, dest.display());
+      println!("  template: {}", template.description);
+      println!();
+      println!("files:");
+      for f in template.files {
+        println!("  {}/{}", dest.display(), f.path);
+      }
+    }
+    Err(reason) => eprintln!("{reason}"),
+  }
+}
+
+/// Lists all available templates.
+fn list_templates() {
+  println!("Available templates:");
+  println!();
+  for t in templates::all_templates() {
+    println!("  {:<25} {}", t.name, t.description);
+  }
+  println!();
+  println!("Usage: dsntk new <TEMPLATE> [OUTPUT_DIR]");
+}
+
+/// Interactive template picker for TTY sessions.
+fn interactive_template_picker() {
+  let all = templates::all_templates();
+  println!("Select a template:");
+  println!();
+  for (i, t) in all.iter().enumerate() {
+    println!("  {}. {:<25} {}", i + 1, t.name, t.description);
+  }
+  println!();
+  println!("Enter template number or name (or Ctrl+C to cancel): ");
+  let mut input = String::new();
+  if std::io::stdin().read_line(&mut input).is_err() {
+    eprintln!("failed to read input");
+    return;
+  }
+  let input = input.trim();
+  let template = if let Ok(num) = input.parse::<usize>() {
+    if num >= 1 && num <= all.len() {
+      Some(&all[num - 1])
+    } else {
+      None
+    }
+  } else {
+    templates::get_template(input)
+  };
+  match template {
+    Some(t) => {
+      let dest = Path::new(t.name);
+      match scaffold(t, dest, false) {
+        Ok(()) => {
+          println!("created project '{}' in '{}'", t.name, dest.display());
+        }
+        Err(reason) => eprintln!("{reason}"),
+      }
+    }
+    None => eprintln!("invalid selection: '{input}'"),
+  }
+}
+
+/// Scaffolds a template to the given destination directory.
+fn scaffold(template: &templates::Template, dest: &Path, force: bool) -> Result<()> {
+  if dest.exists() {
+    let is_empty = dest.read_dir().map(|mut d| d.next().is_none()).unwrap_or(false);
+    if !is_empty {
+      if force {
+        fs::remove_dir_all(dest).map_err(|e| err_create_directory(&dest.to_string_lossy(), &e.to_string()))?;
+      } else {
+        return Err(err_directory_not_empty(&dest.to_string_lossy()));
+      }
+    }
+  }
+  fs::create_dir_all(dest).map_err(|e| err_create_directory(&dest.to_string_lossy(), &e.to_string()))?;
+  for f in template.files {
+    let file_path = dest.join(f.path);
+    if let Some(parent) = file_path.parent() {
+      fs::create_dir_all(parent).map_err(|e| err_create_directory(&parent.to_string_lossy(), &e.to_string()))?;
+    }
+    fs::write(&file_path, f.content).map_err(|e| err_save_file(&file_path.to_string_lossy(), &e.to_string()))?;
+  }
+  Ok(())
 }
 
 /// Saves built-in examples in specified directory.

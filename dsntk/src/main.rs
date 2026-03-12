@@ -10,6 +10,7 @@ extern crate dsntk_macros;
 mod actions;
 mod built_in_examples;
 mod errors;
+mod templates;
 
 /// Main entrypoint of application.
 #[actix_web::main]
