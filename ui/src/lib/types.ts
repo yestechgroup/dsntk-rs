@@ -52,6 +52,24 @@ export interface DecisionRuleInfo {
   outputEntries: string[];
 }
 
+/** A built-in project template. */
+export interface TemplateInfo {
+  name: string;
+  description: string;
+  nodeCount: number;
+  features: string[];
+}
+
+/** A recently opened project. */
+export interface RecentProject {
+  path: string;
+  name: string;
+  lastOpened: string;
+}
+
+/** Application state for routing between welcome/picker/editor views. */
+export type AppView = 'welcome' | 'picker' | 'editor';
+
 /** Status color mapping. */
 export const STATUS_COLORS: Record<string, string> = {
   hit: '#22c55e',

@@ -7,7 +7,7 @@
 
 use dsntk_type_registry::parse_front_matter;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 /// A node in the DMN flow graph for SvelteFlow visualization.
@@ -257,11 +257,189 @@ fn json_to_feel_value(value: &serde_json::Value) -> dsntk_feel::values::Value {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Template metadata (mirrored from dsntk/src/templates/mod.rs)
+// ---------------------------------------------------------------------------
+
+/// Template metadata exposed to the frontend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemplateInfo {
+  pub name: String,
+  pub description: String,
+  pub node_count: u32,
+  pub features: Vec<String>,
+}
+
+/// Returns metadata for all built-in project templates.
+fn built_in_templates() -> Vec<TemplateInfo> {
+  vec![
+    TemplateInfo {
+      name: "loan-eligibility".to_string(),
+      description: "Chained decisions with UNIQUE hit policy for loan approval".to_string(),
+      node_count: 3,
+      features: vec!["UNIQUE hit policy".into(), "Chained decisions".into(), "Risk rating".into()],
+    },
+    TemplateInfo {
+      name: "insurance-pricing".to_string(),
+      description: "BKM with age-based pricing, FEEL ranges, and literal expressions".to_string(),
+      node_count: 3,
+      features: vec!["BKM nodes".into(), "FEEL ranges".into(), "Literal expressions".into()],
+    },
+    TemplateInfo {
+      name: "tax-calculator".to_string(),
+      description: "Progressive tax brackets with numeric ranges and chained calculation".to_string(),
+      node_count: 3,
+      features: vec!["Numeric ranges".into(), "Progressive brackets".into(), "COLLECT policy".into()],
+    },
+    TemplateInfo {
+      name: "order-routing".to_string(),
+      description: "Multi-input decision tables for logistics branching".to_string(),
+      node_count: 3,
+      features: vec!["Multi-input tables".into(), "Logistics branching".into(), "FIRST policy".into()],
+    },
+    TemplateInfo {
+      name: "compliance-checker".to_string(),
+      description: "Knowledge sources, governed-by relationships, and boolean logic".to_string(),
+      node_count: 4,
+      features: vec!["Knowledge sources".into(), "Governed-by edges".into(), "Boolean logic".into()],
+    },
+    TemplateInfo {
+      name: "scorecard".to_string(),
+      description: "Weighted BKM scoring with chained decision contexts".to_string(),
+      node_count: 5,
+      features: vec!["BKM scoring".into(), "Weighted factors".into(), "Chained contexts".into()],
+    },
+  ]
+}
+
+/// Tauri command: List all available project templates.
+#[tauri::command]
+fn list_templates() -> Vec<TemplateInfo> {
+  built_in_templates()
+}
+
+/// Tauri command: Create a new project from a built-in template.
+///
+/// Shells out to `dsntk new <template> <dest>` which handles all file scaffolding.
+#[tauri::command]
+fn create_project_from_template(template_name: String, dest_dir: String) -> Result<String, String> {
+  let dest = Path::new(&dest_dir);
+  if dest.exists() {
+    return Err(format!("Directory '{}' already exists", dest_dir));
+  }
+
+  // Use the dsntk CLI to scaffold — it has the template files compiled in.
+  let output = std::process::Command::new("dsntk")
+    .args(["new", &template_name, &dest_dir])
+    .output()
+    .map_err(|e| format!("Failed to run 'dsntk new': {}. Is dsntk installed and on PATH?", e))?;
+
+  if !output.status.success() {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    return Err(format!("dsntk new failed: {}", stderr));
+  }
+
+  Ok(dest_dir)
+}
+
+// ---------------------------------------------------------------------------
+// Workspace registry — persists recently opened projects
+// ---------------------------------------------------------------------------
+
+/// A recently opened project entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentProject {
+  pub path: String,
+  pub name: String,
+  pub last_opened: String,
+}
+
+/// The on-disk workspace registry.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceRegistry {
+  recent_projects: Vec<RecentProject>,
+}
+
+/// Returns the path to the workspace registry JSON file.
+fn registry_path() -> PathBuf {
+  let dir = dirs_next::data_local_dir().unwrap_or_else(|| PathBuf::from(".")).join("dsntk-explorer");
+  let _ = std::fs::create_dir_all(&dir);
+  dir.join("workspace.json")
+}
+
+/// Reads the workspace registry from disk.
+fn read_registry() -> WorkspaceRegistry {
+  let path = registry_path();
+  if let Ok(contents) = std::fs::read_to_string(&path) {
+    serde_json::from_str(&contents).unwrap_or_default()
+  } else {
+    WorkspaceRegistry::default()
+  }
+}
+
+/// Writes the workspace registry to disk.
+fn write_registry(registry: &WorkspaceRegistry) -> Result<(), String> {
+  let path = registry_path();
+  let json = serde_json::to_string_pretty(registry).map_err(|e| format!("Failed to serialize registry: {}", e))?;
+  std::fs::write(&path, json).map_err(|e| format!("Failed to write registry: {}", e))
+}
+
+/// Tauri command: Get recently opened projects.
+#[tauri::command]
+fn get_recent_projects() -> Vec<RecentProject> {
+  read_registry().recent_projects
+}
+
+/// Tauri command: Add or update a project in the recent projects list.
+#[tauri::command]
+fn add_recent_project(path: String, name: String) -> Result<(), String> {
+  let mut reg = read_registry();
+  let now = chrono::Utc::now().to_rfc3339();
+
+  // Remove any existing entry with the same path.
+  reg.recent_projects.retain(|p| p.path != path);
+
+  // Insert at the front.
+  reg.recent_projects.insert(
+    0,
+    RecentProject {
+      path,
+      name,
+      last_opened: now,
+    },
+  );
+
+  // Keep at most 20 recent projects.
+  reg.recent_projects.truncate(20);
+
+  write_registry(&reg)
+}
+
+/// Tauri command: Remove a project from recent projects.
+#[tauri::command]
+fn remove_recent_project(path: String) -> Result<(), String> {
+  let mut reg = read_registry();
+  reg.recent_projects.retain(|p| p.path != path);
+  write_registry(&reg)
+}
+
 fn main() {
   tauri::Builder::default()
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_dialog::init())
-    .invoke_handler(tauri::generate_handler![load_dmn_project, parse_decision_table, evaluate_feel_expression])
+    .invoke_handler(tauri::generate_handler![
+      load_dmn_project,
+      parse_decision_table,
+      evaluate_feel_expression,
+      list_templates,
+      create_project_from_template,
+      get_recent_projects,
+      add_recent_project,
+      remove_recent_project
+    ])
     .run(tauri::generate_context!())
     .expect("error while running DSNTK Visual DMN Explorer");
 }

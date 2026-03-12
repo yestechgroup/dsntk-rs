@@ -24,6 +24,8 @@ dsntk-feel-evaluator = { path = "../feel-evaluator" }
 dsntk-feel-parser = { path = "../feel-parser" }
 dsntk-recognizer = { path = "../recognizer" }
 dsntk-type-registry = { path = "../type-registry" }
+dirs-next = "2.0"
+chrono = { version = "0.4", features = ["serde"] }
 
 [features]
 default = ["custom-protocol"]
