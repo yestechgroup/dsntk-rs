@@ -1,10 +1,11 @@
 //! # Tests for type resolution and validation
 
-use crate::front_matter::DmnNode;
+use crate::front_matter::{DataTypeRef, DmnNode};
 use crate::registry::{TypeEntry, TypeRegistry, TypeSource};
-use crate::resolver::{resolve_field_chain, validate_allowed_value, validate_bkm_signature, validate_link_targets};
+use crate::resolver::{resolve_data_type, resolve_field_chain, validate_allowed_value, validate_bkm_signature, validate_link_targets};
 use dsntk_feel::{FeelType, Name};
 use std::collections::{BTreeMap, HashMap};
+use std::path::Path;
 
 fn make_context_type() -> FeelType {
   let mut address_fields = BTreeMap::new();
@@ -180,4 +181,53 @@ fn _0010() {
   };
   let result = validate_link_targets(&decision, &[bkm]);
   assert!(result.is_err());
+}
+
+// --- resolve_data_type with registry fallback ---
+
+#[test]
+fn _0011() {
+  // Primitive resolves without registry or schema
+  let data_type = DataTypeRef {
+    type_ref: "number".to_string(),
+    schema: None,
+  };
+  let registry = TypeRegistry::new();
+  let entry = resolve_data_type(&data_type, Path::new("."), &registry).unwrap();
+  assert_eq!(entry.feel_type, FeelType::Number);
+}
+
+#[test]
+fn _0012() {
+  // Named type resolves from pre-populated registry
+  let mut registry = TypeRegistry::new();
+  registry
+    .insert(TypeEntry {
+      name: "Applicant".to_string(),
+      feel_type: FeelType::String,
+      source: TypeSource::Primitive,
+      allowed_values: None,
+      optional_fields: HashMap::new(),
+    })
+    .unwrap();
+  let data_type = DataTypeRef {
+    type_ref: "Applicant".to_string(),
+    schema: None,
+  };
+  let entry = resolve_data_type(&data_type, Path::new("."), &registry).unwrap();
+  assert_eq!(entry.name, "Applicant");
+  assert_eq!(entry.feel_type, FeelType::String);
+}
+
+#[test]
+fn _0013() {
+  // Unknown type with no schema errors from registry
+  let registry = TypeRegistry::new();
+  let data_type = DataTypeRef {
+    type_ref: "Unknown".to_string(),
+    schema: None,
+  };
+  let result = resolve_data_type(&data_type, Path::new("."), &registry);
+  assert!(result.is_err());
+  assert!(result.unwrap_err().to_string().contains("not found"));
 }
