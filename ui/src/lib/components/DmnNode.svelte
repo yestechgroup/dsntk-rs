@@ -2,7 +2,13 @@
   import { Handle, Position } from '@xyflow/svelte';
   import { NODE_TYPE_COLORS, STATUS_COLORS } from '$lib/types';
 
-  let { data } = $props<{ data: { label: string; nodeType: string; status?: string; value?: string } }>();
+  let { data } = $props<{ data: {
+    label: string;
+    nodeType: string;
+    dataTypeRef?: string | null;
+    status?: string;
+    value?: string;
+  } }>();
 
   let borderColor = $derived(
     data.status && data.status !== 'pending'
@@ -20,15 +26,15 @@
   let typeLabel = $derived(
     data.nodeType === 'inputData' ? 'Input Data' :
     data.nodeType === 'decision' ? 'Decision' :
-    data.nodeType === 'businessKnowledgeModel' ? 'BKM' :
-    data.nodeType === 'decisionService' ? 'Decision Service' :
+    data.nodeType === 'bkm' ? 'BKM' :
     data.nodeType === 'knowledgeSource' ? 'Knowledge Source' :
     data.nodeType
   );
 
   let shapeClass = $derived(
     data.nodeType === 'inputData' ? 'shape-rounded' :
-    data.nodeType === 'businessKnowledgeModel' ? 'shape-clipped' :
+    data.nodeType === 'bkm' ? 'shape-clipped' :
+    data.nodeType === 'knowledgeSource' ? 'shape-wavy' :
     'shape-rect'
   );
 </script>
@@ -37,6 +43,9 @@
   <Handle type="target" position={Position.Top} />
   <div class="node-type" style="color: {borderColor};">{typeLabel}</div>
   <div class="node-label">{data.label}</div>
+  {#if data.dataTypeRef}
+    <div class="node-type-ref">{data.dataTypeRef}</div>
+  {/if}
   {#if data.value && data.status !== 'pending'}
     <div class="node-value" title={data.value}>
       {data.value.length > 30 ? data.value.slice(0, 30) + '...' : data.value}
@@ -70,6 +79,11 @@
     padding: 12px 24px;
   }
 
+  .shape-wavy {
+    border-radius: 2px;
+    border-style: dashed;
+  }
+
   .node-type {
     font-size: 10px;
     font-weight: 600;
@@ -81,6 +95,13 @@
   .node-label {
     font-size: 13px;
     font-weight: 500;
+  }
+
+  .node-type-ref {
+    font-size: 10px;
+    color: #8b5cf6;
+    font-family: 'Fira Code', monospace;
+    margin-top: 2px;
   }
 
   .node-value {

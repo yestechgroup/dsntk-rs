@@ -1,11 +1,14 @@
 //! # DSNTK Visual DMN Explorer
 //!
-//! Tauri desktop application for visualizing and evaluating DMN models.
+//! Tauri desktop application for visualizing markdown-native DMN projects.
+//! Operates on projects created via `dsntk new` — no XML involved.
 
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
+use dsntk_type_registry::parse_front_matter;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::path::Path;
+use walkdir::WalkDir;
 
 /// A node in the DMN flow graph for SvelteFlow visualization.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -14,6 +17,10 @@ pub struct FlowNode {
   pub id: String,
   pub label: String,
   pub node_type: String,
+  pub data_type_ref: Option<String>,
+  pub schema_path: Option<String>,
+  pub body: String,
+  pub source_file: String,
 }
 
 /// An edge in the DMN flow graph for SvelteFlow visualization.
@@ -32,190 +39,181 @@ pub struct FlowEdge {
 pub struct FlowGraph {
   pub nodes: Vec<FlowNode>,
   pub edges: Vec<FlowEdge>,
-  pub model_name: String,
-  pub model_namespace: String,
+  pub project_name: String,
+  pub type_files: Vec<TypeFile>,
 }
 
-/// Trace result for a single node.
+/// A TypeScript type file from the project.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct NodeTrace {
-  pub status: String,
-  pub value: String,
+pub struct TypeFile {
+  pub path: String,
+  pub content: String,
 }
 
-/// Evaluation trace for the entire model.
+/// Parsed decision table info for a decision node.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EvaluationTrace {
-  pub node_results: HashMap<String, NodeTrace>,
-  pub output_value: String,
+pub struct DecisionTableInfo {
+  pub node_id: String,
+  pub hit_policy: String,
+  pub input_columns: Vec<String>,
+  pub output_columns: Vec<String>,
+  pub rules: Vec<DecisionRuleInfo>,
 }
 
-/// Tauri command: Load a DMN model and return the flow graph.
+/// A single rule row from a decision table.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DecisionRuleInfo {
+  pub index: u32,
+  pub input_entries: Vec<String>,
+  pub output_entries: Vec<String>,
+}
+
+/// Tauri command: Load a markdown DMN project directory and return the flow graph.
+///
+/// Scans `decisions/*.md` files with YAML front matter and `types/*.ts` files.
+/// Does NOT use XML.
 #[tauri::command]
-fn load_dmn_model(path: String) -> Result<FlowGraph, String> {
-  let xml_content = std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file '{}': {}", path, e))?;
+fn load_dmn_project(project_dir: String) -> Result<FlowGraph, String> {
+  let project_path = Path::new(&project_dir);
+  if !project_path.is_dir() {
+    return Err(format!("'{}' is not a directory", project_dir));
+  }
 
-  let definitions = dsntk_model::parse(&xml_content).map_err(|e| format!("Failed to parse DMN model: {}", e))?;
+  let project_name = project_path
+    .file_name()
+    .map(|n| n.to_string_lossy().to_string())
+    .unwrap_or_else(|| "unknown".to_string());
 
   let mut nodes = Vec::new();
   let mut edges = Vec::new();
+  let mut type_files = Vec::new();
   let mut edge_counter = 0u32;
 
-  for drg_element in definitions.drg_elements() {
-    match drg_element {
-      dsntk_model::DrgElement::Decision(decision) => {
-        use dsntk_model::{DmnElement, NamedElement};
-        let id = decision.id().clone();
-        let label = decision.feel_name().to_string();
+  for entry in WalkDir::new(project_path).into_iter().filter_map(|e| e.ok()) {
+    let path = entry.path();
+    let relative_path = path.strip_prefix(project_path).unwrap_or(path).to_string_lossy().to_string();
+
+    if path.is_file() {
+      let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+      if ext == "md" && relative_path != "README.md" {
+        let content = std::fs::read_to_string(path).map_err(|e| format!("Failed to read '{}': {}", relative_path, e))?;
+
+        let front_matter = match parse_front_matter(&content) {
+          Ok(fm) => fm,
+          Err(_) => continue,
+        };
+
+        let body = dsntk_type_registry::front_matter::extract_body(&content).unwrap_or("").to_string();
+
+        let node_type = match front_matter.dmn.node_type.as_str() {
+          "input-data" => "inputData",
+          "decision" => "decision",
+          "bkm" => "bkm",
+          "knowledge-source" => "knowledgeSource",
+          _ => "decision",
+        };
+
         nodes.push(FlowNode {
-          id: id.clone(),
-          label,
-          node_type: "decision".to_string(),
+          id: front_matter.dmn.id.clone(),
+          label: front_matter.dmn.name.clone(),
+          node_type: node_type.to_string(),
+          data_type_ref: front_matter.dmn.data_type.as_ref().map(|dt| dt.type_ref.clone()),
+          schema_path: front_matter.dmn.data_type.as_ref().and_then(|dt| dt.schema.clone()),
+          body,
+          source_file: relative_path,
         });
-        for req in decision.information_requirements() {
-          if let Some(href) = req.required_decision() {
+
+        if let Some(requires) = &front_matter.dmn.requires {
+          for required_id in requires {
             edges.push(FlowEdge {
               id: format!("e{}", edge_counter),
-              source: href.id().to_string(),
-              target: id.clone(),
-              edge_type: "information".to_string(),
+              source: required_id.clone(),
+              target: front_matter.dmn.id.clone(),
+              edge_type: "requires".to_string(),
             });
             edge_counter += 1;
           }
-          if let Some(href) = req.required_input() {
+        }
+
+        if let Some(governed_by) = &front_matter.dmn.governed_by {
+          for gov_id in governed_by {
             edges.push(FlowEdge {
               id: format!("e{}", edge_counter),
-              source: href.id().to_string(),
-              target: id.clone(),
-              edge_type: "information".to_string(),
+              source: gov_id.clone(),
+              target: front_matter.dmn.id.clone(),
+              edge_type: "governed-by".to_string(),
             });
             edge_counter += 1;
           }
         }
-        for req in decision.knowledge_requirements() {
-          edges.push(FlowEdge {
-            id: format!("e{}", edge_counter),
-            source: req.required_knowledge().id().to_string(),
-            target: id.clone(),
-            edge_type: "knowledge".to_string(),
-          });
-          edge_counter += 1;
-        }
-      }
-      dsntk_model::DrgElement::InputData(input_data) => {
-        use dsntk_model::{DmnElement, NamedElement};
-        nodes.push(FlowNode {
-          id: input_data.id().clone(),
-          label: input_data.feel_name().to_string(),
-          node_type: "inputData".to_string(),
-        });
-      }
-      dsntk_model::DrgElement::BusinessKnowledgeModel(bkm) => {
-        use dsntk_model::{DmnElement, NamedElement};
-        let id = bkm.id().clone();
-        nodes.push(FlowNode {
-          id: id.clone(),
-          label: bkm.feel_name().to_string(),
-          node_type: "businessKnowledgeModel".to_string(),
-        });
-        for req in bkm.knowledge_requirements() {
-          edges.push(FlowEdge {
-            id: format!("e{}", edge_counter),
-            source: req.required_knowledge().id().to_string(),
-            target: id.clone(),
-            edge_type: "knowledge".to_string(),
-          });
-          edge_counter += 1;
-        }
-      }
-      dsntk_model::DrgElement::DecisionService(ds) => {
-        use dsntk_model::{DmnElement, NamedElement};
-        nodes.push(FlowNode {
-          id: ds.id().clone(),
-          label: ds.feel_name().to_string(),
-          node_type: "decisionService".to_string(),
-        });
-      }
-      dsntk_model::DrgElement::KnowledgeSource(ks) => {
-        use dsntk_model::{DmnElement, NamedElement};
-        nodes.push(FlowNode {
-          id: ks.id().clone(),
-          label: ks.feel_name().to_string(),
-          node_type: "knowledgeSource".to_string(),
+      } else if ext == "ts" {
+        let content = std::fs::read_to_string(path).map_err(|e| format!("Failed to read '{}': {}", relative_path, e))?;
+        type_files.push(TypeFile {
+          path: relative_path,
+          content,
         });
       }
     }
   }
 
-  use dsntk_model::{DmnElement, NamedElement};
   Ok(FlowGraph {
     nodes,
     edges,
-    model_name: definitions.feel_name().to_string(),
-    model_namespace: definitions.namespace().to_string(),
+    project_name,
+    type_files,
   })
 }
 
-/// Tauri command: Evaluate a DMN model with input data and return trace.
+/// Tauri command: Parse a decision table from a markdown file.
 #[tauri::command]
-fn evaluate_with_trace(model_path: String, input_json: String) -> Result<EvaluationTrace, String> {
-  let xml_content = std::fs::read_to_string(&model_path).map_err(|e| format!("Failed to read file '{}': {}", model_path, e))?;
+fn parse_decision_table(file_path: String) -> Result<DecisionTableInfo, String> {
+  let content = std::fs::read_to_string(&file_path).map_err(|e| format!("Failed to read '{}': {}", file_path, e))?;
 
-  let definitions = dsntk_model::parse(&xml_content).map_err(|e| format!("Failed to parse DMN model: {}", e))?;
+  let front_matter = parse_front_matter(&content).map_err(|e| format!("Failed to parse front matter: {}", e))?;
+  let body = dsntk_type_registry::front_matter::extract_body(&content).unwrap_or("");
 
-  let model_evaluator =
-    dsntk_model_evaluator::ModelEvaluator::new(&[definitions.clone()]).map_err(|e| format!("Failed to build model evaluator: {}", e))?;
+  let dt = dsntk_recognizer::from_markdown(body, false).map_err(|e| format!("Failed to parse decision table: {}", e))?;
 
-  let input_value: serde_json::Value = serde_json::from_str(&input_json).map_err(|e| format!("Failed to parse input JSON: {}", e))?;
+  let input_columns: Vec<String> = dt.input_clauses.iter().map(|ic| ic.input_expression.clone()).collect();
+  let output_columns: Vec<String> = dt.output_clauses.iter().map(|oc| oc.output_component_name.clone().unwrap_or_default()).collect();
 
-  let input_context = json_to_feel_context(&input_value);
+  let rules: Vec<DecisionRuleInfo> = dt
+    .rules
+    .iter()
+    .enumerate()
+    .map(|(i, rule)| DecisionRuleInfo {
+      index: i as u32,
+      input_entries: rule.input_entries.iter().map(|ie| ie.text.clone()).collect(),
+      output_entries: rule.output_entries.iter().map(|oe| oe.text.clone()).collect(),
+    })
+    .collect();
 
-  let mut node_results = HashMap::new();
-  use dsntk_model::{DmnElement, NamedElement};
-  let model_namespace = definitions.namespace().to_string();
-  let model_name = definitions.feel_name().to_string();
-  let mut final_output = String::from("null");
-
-  for decision in definitions.decisions() {
-    let decision_name = decision.feel_name().to_string();
-    let result = model_evaluator.evaluate_invocable(&model_namespace, &model_name, &decision_name, &input_context);
-
-    let status = if result.is_null() { "miss" } else { "hit" };
-    let value_str = format!("{}", result);
-    final_output = value_str.clone();
-
-    node_results.insert(
-      decision.id().clone(),
-      NodeTrace {
-        status: status.to_string(),
-        value: value_str,
-      },
-    );
-  }
-
-  for input in definitions.input_data() {
-    let input_name = input.feel_name().to_string();
-    let provided = input_context.get_entry(&dsntk_feel::Name::from(input_name.as_str()));
-    let (status, value_str) = if let Some(val) = provided {
-      ("hit", format!("{}", val))
-    } else {
-      ("ignored", "not provided".to_string())
-    };
-    node_results.insert(
-      input.id().clone(),
-      NodeTrace {
-        status: status.to_string(),
-        value: value_str,
-      },
-    );
-  }
-
-  Ok(EvaluationTrace {
-    node_results,
-    output_value: final_output,
+  Ok(DecisionTableInfo {
+    node_id: front_matter.dmn.id,
+    hit_policy: format!("{}", dt.hit_policy),
+    input_columns,
+    output_columns,
+    rules,
   })
+}
+
+/// Tauri command: Evaluate a FEEL expression with a JSON context.
+#[tauri::command]
+fn evaluate_feel_expression(expression: String, context_json: String) -> Result<String, String> {
+  let scope = dsntk_feel::FeelScope::default();
+  let node =
+    dsntk_feel_parser::parse_expression(&scope, &expression, false).map_err(|e| format!("Failed to parse FEEL expression: {}", e))?;
+
+  let input_value: serde_json::Value = serde_json::from_str(&context_json).map_err(|e| format!("Failed to parse context JSON: {}", e))?;
+  let context = json_to_feel_context(&input_value);
+  let eval_scope: dsntk_feel::FeelScope = context.into();
+  let result = dsntk_feel_evaluator::evaluate(&eval_scope, &node);
+
+  Ok(format!("{}", result))
 }
 
 /// Converts a JSON value to a FEEL context.
@@ -224,8 +222,7 @@ fn json_to_feel_context(value: &serde_json::Value) -> dsntk_feel::context::FeelC
   if let serde_json::Value::Object(map) = value {
     for (key, val) in map {
       let name = dsntk_feel::Name::from(key.as_str());
-      let feel_value = json_to_feel_value(val);
-      ctx.set_entry(&name, feel_value);
+      ctx.set_entry(&name, json_to_feel_value(val));
     }
   }
   ctx
@@ -233,20 +230,21 @@ fn json_to_feel_context(value: &serde_json::Value) -> dsntk_feel::context::FeelC
 
 /// Converts a JSON value to a FEEL value.
 fn json_to_feel_value(value: &serde_json::Value) -> dsntk_feel::values::Value {
+  use dsntk_feel::values::Value;
   match value {
     serde_json::Value::Null => dsntk_feel::value_null!(),
-    serde_json::Value::Bool(b) => dsntk_feel::values::Value::Boolean(*b),
+    serde_json::Value::Bool(b) => Value::Boolean(*b),
     serde_json::Value::Number(n) => {
       if let Ok(num) = n.to_string().parse::<dsntk_feel::FeelNumber>() {
-        dsntk_feel::values::Value::Number(num)
+        Value::Number(num)
       } else {
         dsntk_feel::value_null!()
       }
     }
-    serde_json::Value::String(s) => dsntk_feel::values::Value::String(s.clone()),
+    serde_json::Value::String(s) => Value::String(s.clone()),
     serde_json::Value::Array(arr) => {
-      let items: Vec<dsntk_feel::values::Value> = arr.iter().map(json_to_feel_value).collect();
-      dsntk_feel::values::Value::List(items)
+      let items: Vec<Value> = arr.iter().map(json_to_feel_value).collect();
+      Value::List(items)
     }
     serde_json::Value::Object(map) => {
       let mut ctx = dsntk_feel::context::FeelContext::default();
@@ -254,7 +252,7 @@ fn json_to_feel_value(value: &serde_json::Value) -> dsntk_feel::values::Value {
         let name = dsntk_feel::Name::from(key.as_str());
         ctx.set_entry(&name, json_to_feel_value(val));
       }
-      dsntk_feel::values::Value::Context(ctx)
+      Value::Context(ctx)
     }
   }
 }
@@ -263,7 +261,7 @@ fn main() {
   tauri::Builder::default()
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_dialog::init())
-    .invoke_handler(tauri::generate_handler![load_dmn_model, evaluate_with_trace])
+    .invoke_handler(tauri::generate_handler![load_dmn_project, parse_decision_table, evaluate_feel_expression])
     .run(tauri::generate_context!())
     .expect("error while running DSNTK Visual DMN Explorer");
 }

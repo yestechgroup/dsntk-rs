@@ -2,25 +2,25 @@
   import { SvelteFlow, Background, Controls, MiniMap } from '@xyflow/svelte';
   import type { Node, Edge } from '@xyflow/svelte';
   import DmnNode from '$lib/components/DmnNode.svelte';
-  import InputPanel from '$lib/components/InputPanel.svelte';
-  import OutputPanel from '$lib/components/OutputPanel.svelte';
-  import { loadDmnModel, evaluateWithTrace, openFileDialog, isTauri } from '$lib/bridge';
+  import DecisionTableRenderer from '$lib/components/DecisionTableRenderer.svelte';
+  import { loadDmnProject, parseDecisionTable, openProjectDialog, isTauri } from '$lib/bridge';
   import { NODE_TYPE_COLORS } from '$lib/types';
-  import type { FlowGraph, EvaluationTrace } from '$lib/types';
+  import type { FlowGraph, FlowNode, DecisionTableInfo, TypeFile } from '$lib/types';
 
   const nodeTypes = { dmn: DmnNode };
 
   let nodes = $state<Node[]>([]);
   let edges = $state<Edge[]>([]);
-  let modelPath = $state<string | null>(null);
-  let modelName = $state<string>('');
-  let trace = $state<EvaluationTrace | null>(null);
+  let projectDir = $state<string | null>(null);
+  let projectName = $state<string>('');
+  let typeFiles = $state<TypeFile[]>([]);
+  let selectedTable = $state<DecisionTableInfo | null>(null);
+  let selectedNodeBody = $state<string>('');
   let loading = $state(false);
   let error = $state<string | null>(null);
 
   /** Apply auto-layout using a simple hierarchical algorithm. */
   function autoLayout(graph: FlowGraph): { nodes: Node[]; edges: Edge[] } {
-    // Build adjacency: for each node, determine its depth (longest path from any root)
     const nodeMap = new Map(graph.nodes.map((n) => [n.id, n]));
     const incomingEdges = new Map<string, string[]>();
     const outgoingEdges = new Map<string, string[]>();
@@ -35,14 +35,10 @@
       outgoingEdges.get(e.source)?.push(e.target);
     }
 
-    // BFS from roots (nodes with no incoming) to assign depths
     const depth = new Map<string, number>();
     const roots = graph.nodes.filter((n) => (incomingEdges.get(n.id)?.length ?? 0) === 0);
-
-    // Initialize all nodes with depth 0
     for (const n of graph.nodes) depth.set(n.id, 0);
 
-    // Assign max-depth via topological traversal
     const queue = [...roots.map((r) => r.id)];
     const visited = new Set<string>();
     while (queue.length > 0) {
@@ -59,7 +55,6 @@
       }
     }
 
-    // Group nodes by depth
     const layers = new Map<number, string[]>();
     for (const [id, d] of depth) {
       if (!layers.has(d)) layers.set(d, []);
@@ -87,6 +82,9 @@
           data: {
             label: flowNode.label,
             nodeType: flowNode.nodeType,
+            dataTypeRef: flowNode.dataTypeRef,
+            sourceFile: flowNode.sourceFile,
+            body: flowNode.body,
             status: 'pending',
             value: ''
           }
@@ -100,28 +98,30 @@
       target: e.target,
       type: 'default',
       animated: false,
-      style: `stroke: ${e.edgeType === 'knowledge' ? '#f59e0b' : '#6b7280'}; stroke-width: 1.5;`
+      style: `stroke: ${e.edgeType === 'governed-by' ? '#ec4899' : '#6b7280'}; stroke-width: 1.5;${e.edgeType === 'governed-by' ? ' stroke-dasharray: 5 3;' : ''}`
     }));
 
     return { nodes: layoutNodes, edges: layoutEdges };
   }
 
-  /** Handle file open. */
+  /** Handle project open — opens a directory, not a file. */
   async function handleOpen() {
     error = null;
     if (!isTauri) {
-      error = 'File open requires the Tauri desktop runtime.';
+      error = 'Opening a project requires the Tauri desktop runtime.';
       return;
     }
-    const path = await openFileDialog();
-    if (!path) return;
+    const dir = await openProjectDialog();
+    if (!dir) return;
 
     loading = true;
     try {
-      const graph = await loadDmnModel(path);
-      modelPath = path;
-      modelName = graph.modelName;
-      trace = null;
+      const graph = await loadDmnProject(dir);
+      projectDir = dir;
+      projectName = graph.projectName;
+      typeFiles = graph.typeFiles;
+      selectedTable = null;
+      selectedNodeBody = '';
       const layout = autoLayout(graph);
       nodes = layout.nodes;
       edges = layout.edges;
@@ -132,60 +132,45 @@
     }
   }
 
-  /** Handle evaluation. */
-  async function handleEvaluate(inputJson: string) {
-    if (!modelPath) return;
-    error = null;
-    loading = true;
-    try {
-      trace = await evaluateWithTrace(modelPath, inputJson);
+  /** Handle node click — show decision table if it's a decision node. */
+  async function handleNodeClick(event: CustomEvent) {
+    const node = event.detail.node;
+    if (!node || !projectDir) return;
 
-      // Update node colors based on trace
-      nodes = nodes.map((node) => {
-        const nodeTrace = trace?.nodeResults[node.id];
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            status: nodeTrace?.status ?? 'pending',
-            value: nodeTrace?.value ?? ''
-          }
-        };
-      });
+    selectedNodeBody = node.data?.body ?? '';
 
-      // Animate edges connected to hit nodes
-      edges = edges.map((edge) => {
-        const sourceTrace = trace?.nodeResults[edge.source];
-        const targetTrace = trace?.nodeResults[edge.target];
-        const isActive = sourceTrace?.status === 'hit' && targetTrace?.status === 'hit';
-        return {
-          ...edge,
-          animated: isActive
-        };
-      });
-    } catch (e: any) {
-      error = e.message ?? String(e);
-    } finally {
-      loading = false;
+    // Only parse decision tables for decision/bkm nodes
+    if (node.data?.nodeType === 'decision' || node.data?.nodeType === 'bkm') {
+      const sourceFile = node.data?.sourceFile;
+      if (sourceFile) {
+        try {
+          const filePath = `${projectDir}/${sourceFile}`;
+          selectedTable = await parseDecisionTable(filePath);
+        } catch {
+          // Node may not have a decision table (e.g. FEEL expression)
+          selectedTable = null;
+        }
+      }
+    } else {
+      selectedTable = null;
     }
   }
 </script>
 
 <div class="app-layout">
-  <!-- Toolbar -->
   <header class="toolbar">
     <div class="toolbar-left">
       <span class="logo">DSNTK</span>
       <span class="separator">|</span>
       <span class="title">Visual DMN Explorer</span>
-      {#if modelName}
+      {#if projectName}
         <span class="separator">-</span>
-        <span class="model-name">{modelName}</span>
+        <span class="project-name">{projectName}</span>
       {/if}
     </div>
     <div class="toolbar-right">
       <button class="btn-open" onclick={handleOpen} disabled={loading}>
-        Open DMN Model
+        Open Project
       </button>
     </div>
   </header>
@@ -194,12 +179,10 @@
     <div class="error-bar">{error}</div>
   {/if}
 
-  <!-- Main content -->
   <div class="main-content">
-    <!-- Canvas -->
     <div class="canvas-area">
       {#if nodes.length > 0}
-        <SvelteFlow {nodes} {edges} {nodeTypes} fitView>
+        <SvelteFlow {nodes} {edges} {nodeTypes} fitView on:nodeclick={handleNodeClick}>
           <Background />
           <Controls />
           <MiniMap
@@ -210,24 +193,39 @@
         <div class="empty-state">
           <div class="empty-icon">
             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="16" y1="13" x2="8" y2="13" />
-              <line x1="16" y1="17" x2="8" y2="17" />
-              <polyline points="10 9 9 9 8 9" />
+              <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
             </svg>
           </div>
-          <h2>Open a DMN Model</h2>
-          <p>Click "Open DMN Model" to load a .dmn or .xml file and visualize its decision graph.</p>
+          <h2>Open a Markdown DMN Project</h2>
+          <p>Click "Open Project" to load a project directory created via <code>dsntk new</code>.</p>
+          <p class="hint">Projects contain <code>decisions/*.md</code> files with YAML front matter and <code>types/*.ts</code> schema definitions.</p>
         </div>
       {/if}
     </div>
 
-    <!-- Side panel -->
     <aside class="side-panel">
-      <InputPanel inputJson="{{}}" onEvaluate={handleEvaluate} disabled={!modelPath || loading} />
-      <div class="divider"></div>
-      <OutputPanel {trace} />
+      {#if selectedNodeBody}
+        <div class="body-section">
+          <h3>Documentation</h3>
+          <div class="body-content">{selectedNodeBody}</div>
+        </div>
+        <div class="divider"></div>
+      {/if}
+
+      <DecisionTableRenderer table={selectedTable} />
+
+      {#if typeFiles.length > 0}
+        <div class="divider"></div>
+        <div class="types-section">
+          <h3>Type Definitions</h3>
+          {#each typeFiles as tf}
+            <details>
+              <summary>{tf.path}</summary>
+              <pre><code>{tf.content}</code></pre>
+            </details>
+          {/each}
+        </div>
+      {/if}
     </aside>
   </div>
 </div>
@@ -272,7 +270,7 @@
     color: #aaa;
   }
 
-  .model-name {
+  .project-name {
     font-size: 14px;
     color: #eee;
     font-weight: 500;
@@ -331,13 +329,26 @@
 
   .empty-state p {
     font-size: 13px;
-    max-width: 300px;
+    max-width: 350px;
     text-align: center;
     line-height: 1.5;
   }
 
+  .empty-state code {
+    background: rgba(139, 92, 246, 0.15);
+    padding: 2px 5px;
+    border-radius: 3px;
+    color: #8b5cf6;
+    font-size: 12px;
+  }
+
+  .hint {
+    color: #555;
+    font-size: 12px !important;
+  }
+
   .side-panel {
-    width: 320px;
+    width: 360px;
     background: #16213e;
     border-left: 1px solid rgba(255, 255, 255, 0.1);
     display: flex;
@@ -350,5 +361,61 @@
     height: 1px;
     background: rgba(255, 255, 255, 0.1);
     margin: 0 16px;
+  }
+
+  .body-section {
+    padding: 16px;
+  }
+
+  .body-section h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #eee;
+    margin-bottom: 8px;
+  }
+
+  .body-content {
+    font-size: 13px;
+    color: #aaa;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .types-section {
+    padding: 16px;
+  }
+
+  .types-section h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #eee;
+    margin-bottom: 8px;
+  }
+
+  details {
+    margin-bottom: 8px;
+  }
+
+  summary {
+    font-size: 12px;
+    color: #8b5cf6;
+    cursor: pointer;
+    padding: 4px 0;
+  }
+
+  pre {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    padding: 10px;
+    overflow-x: auto;
+    margin-top: 4px;
+  }
+
+  pre code {
+    font-size: 11px;
+    font-family: 'Fira Code', monospace;
+    color: #ccc;
   }
 </style>

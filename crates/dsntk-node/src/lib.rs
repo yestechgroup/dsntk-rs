@@ -2,21 +2,39 @@
 //!
 //! napi-rs bridge exposing dsntk Rust evaluation engine to Node.js.
 //! Used by the Tauri + SvelteKit desktop application.
+//!
+//! Operates on **markdown-native DMN projects** (created via `dsntk new`),
+//! NOT XML. Each project is a directory containing:
+//! - `decisions/*.md` files with YAML front matter and markdown decision tables
+//! - `types/*.ts` files with TypeScript type definitions
 
 use dsntk_feel::values::Value;
-use dsntk_model::{DmnElement, NamedElement};
+use dsntk_type_registry::parse_front_matter;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::Path;
+use walkdir::WalkDir;
 
 /// A node in the DMN flow graph for SvelteFlow visualization.
 #[napi(object)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowNode {
+  /// The `dmn.id` from front matter.
   pub id: String,
+  /// The `dmn.name` from front matter.
   pub label: String,
+  /// The node type: "inputData", "decision", "bkm", "knowledgeSource".
   pub node_type: String,
+  /// Optional type reference (e.g. "ApplicantData").
+  pub data_type_ref: Option<String>,
+  /// Optional schema path (e.g. "../types/loan.ts").
+  pub schema_path: Option<String>,
+  /// The markdown body content (documentation + decision table).
+  pub body: String,
+  /// The source file path relative to the project root.
+  pub source_file: String,
 }
 
 /// An edge in the DMN flow graph for SvelteFlow visualization.
@@ -26,6 +44,7 @@ pub struct FlowEdge {
   pub id: String,
   pub source: String,
   pub target: String,
+  /// "requires" or "governed-by".
   pub edge_type: String,
 }
 
@@ -35,8 +54,20 @@ pub struct FlowEdge {
 pub struct FlowGraph {
   pub nodes: Vec<FlowNode>,
   pub edges: Vec<FlowEdge>,
-  pub model_name: String,
-  pub model_namespace: String,
+  /// Project directory name.
+  pub project_name: String,
+  /// TypeScript type definitions found in the project.
+  pub type_files: Vec<TypeFile>,
+}
+
+/// A TypeScript type file from the project.
+#[napi(object)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TypeFile {
+  /// Path relative to project root.
+  pub path: String,
+  /// File content.
+  pub content: String,
 }
 
 /// Trace result for a single decision table row.
@@ -59,97 +90,124 @@ pub struct EvaluationTrace {
 #[napi(object)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeTrace {
+  /// "hit", "miss", "ignored", or "pending".
   pub status: String,
+  /// The evaluated value as a string.
   pub value: String,
+  /// Row-level traces for decision table nodes.
   pub table_traces: Vec<RowTrace>,
 }
 
-/// Loads a DMN model from an XML file and returns a FlowGraph for visualization.
+/// Parsed decision table info for a decision node.
+#[napi(object)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecisionTableInfo {
+  pub node_id: String,
+  pub hit_policy: String,
+  pub input_columns: Vec<String>,
+  pub output_columns: Vec<String>,
+  pub rules: Vec<DecisionRuleInfo>,
+}
+
+/// A single rule row from a decision table.
+#[napi(object)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecisionRuleInfo {
+  pub index: u32,
+  pub input_entries: Vec<String>,
+  pub output_entries: Vec<String>,
+}
+
+/// Loads a markdown DMN project from a directory and returns a FlowGraph.
+///
+/// The directory should contain `decisions/*.md` files with YAML front matter
+/// (created via `dsntk new`). This does NOT use XML.
 #[napi]
-pub fn load_dmn_model(path: String) -> Result<FlowGraph> {
-  let xml_content = std::fs::read_to_string(&path).map_err(|e| Error::from_reason(format!("Failed to read file '{}': {}", path, e)))?;
-  let definitions = dsntk_model::parse(&xml_content).map_err(|e| Error::from_reason(format!("Failed to parse DMN model: {}", e)))?;
+pub fn load_dmn_project(project_dir: String) -> Result<FlowGraph> {
+  let project_path = Path::new(&project_dir);
+  if !project_path.is_dir() {
+    return Err(Error::from_reason(format!("'{}' is not a directory", project_dir)));
+  }
+
+  let project_name = project_path
+    .file_name()
+    .map(|n| n.to_string_lossy().to_string())
+    .unwrap_or_else(|| "unknown".to_string());
 
   let mut nodes = Vec::new();
   let mut edges = Vec::new();
+  let mut type_files = Vec::new();
   let mut edge_counter = 0u32;
 
-  for drg_element in definitions.drg_elements() {
-    match drg_element {
-      dsntk_model::DrgElement::Decision(decision) => {
-        let id = decision.id().clone();
-        let label = decision.feel_name().to_string();
+  // Scan for all .md files in the project directory
+  for entry in WalkDir::new(project_path).into_iter().filter_map(|e| e.ok()) {
+    let path = entry.path();
+    let relative_path = path.strip_prefix(project_path).unwrap_or(path).to_string_lossy().to_string();
+
+    if path.is_file() {
+      let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+      if ext == "md" && relative_path != "README.md" {
+        // Parse markdown DMN file
+        let content = std::fs::read_to_string(path).map_err(|e| Error::from_reason(format!("Failed to read '{}': {}", relative_path, e)))?;
+
+        // Try to parse front matter — skip files without valid DMN front matter
+        let front_matter = match parse_front_matter(&content) {
+          Ok(fm) => fm,
+          Err(_) => continue,
+        };
+
+        let body = dsntk_type_registry::front_matter::extract_body(&content).unwrap_or("").to_string();
+
+        let node_type = match front_matter.dmn.node_type.as_str() {
+          "input-data" => "inputData",
+          "decision" => "decision",
+          "bkm" => "bkm",
+          "knowledge-source" => "knowledgeSource",
+          _ => "decision",
+        };
+
         nodes.push(FlowNode {
-          id: id.clone(),
-          label,
-          node_type: "decision".to_string(),
+          id: front_matter.dmn.id.clone(),
+          label: front_matter.dmn.name.clone(),
+          node_type: node_type.to_string(),
+          data_type_ref: front_matter.dmn.data_type.as_ref().map(|dt| dt.type_ref.clone()),
+          schema_path: front_matter.dmn.data_type.as_ref().and_then(|dt| dt.schema.clone()),
+          body,
+          source_file: relative_path,
         });
-        for req in decision.information_requirements() {
-          if let Some(href) = req.required_decision() {
+
+        // Build "requires" edges
+        if let Some(requires) = &front_matter.dmn.requires {
+          for required_id in requires {
             edges.push(FlowEdge {
               id: format!("e{}", edge_counter),
-              source: href.id().to_string(),
-              target: id.clone(),
-              edge_type: "information".to_string(),
+              source: required_id.clone(),
+              target: front_matter.dmn.id.clone(),
+              edge_type: "requires".to_string(),
             });
             edge_counter += 1;
           }
-          if let Some(href) = req.required_input() {
+        }
+
+        // Build "governed-by" edges
+        if let Some(governed_by) = &front_matter.dmn.governed_by {
+          for gov_id in governed_by {
             edges.push(FlowEdge {
               id: format!("e{}", edge_counter),
-              source: href.id().to_string(),
-              target: id.clone(),
-              edge_type: "information".to_string(),
+              source: gov_id.clone(),
+              target: front_matter.dmn.id.clone(),
+              edge_type: "governed-by".to_string(),
             });
             edge_counter += 1;
           }
         }
-        for req in decision.knowledge_requirements() {
-          edges.push(FlowEdge {
-            id: format!("e{}", edge_counter),
-            source: req.required_knowledge().id().to_string(),
-            target: id.clone(),
-            edge_type: "knowledge".to_string(),
-          });
-          edge_counter += 1;
-        }
-      }
-      dsntk_model::DrgElement::InputData(input_data) => {
-        nodes.push(FlowNode {
-          id: input_data.id().clone(),
-          label: input_data.feel_name().to_string(),
-          node_type: "inputData".to_string(),
-        });
-      }
-      dsntk_model::DrgElement::BusinessKnowledgeModel(bkm) => {
-        let id = bkm.id().clone();
-        nodes.push(FlowNode {
-          id: id.clone(),
-          label: bkm.feel_name().to_string(),
-          node_type: "businessKnowledgeModel".to_string(),
-        });
-        for req in bkm.knowledge_requirements() {
-          edges.push(FlowEdge {
-            id: format!("e{}", edge_counter),
-            source: req.required_knowledge().id().to_string(),
-            target: id.clone(),
-            edge_type: "knowledge".to_string(),
-          });
-          edge_counter += 1;
-        }
-      }
-      dsntk_model::DrgElement::DecisionService(ds) => {
-        nodes.push(FlowNode {
-          id: ds.id().clone(),
-          label: ds.feel_name().to_string(),
-          node_type: "decisionService".to_string(),
-        });
-      }
-      dsntk_model::DrgElement::KnowledgeSource(ks) => {
-        nodes.push(FlowNode {
-          id: ks.id().clone(),
-          label: ks.feel_name().to_string(),
-          node_type: "knowledgeSource".to_string(),
+      } else if ext == "ts" {
+        // Collect TypeScript type definition files
+        let content = std::fs::read_to_string(path).map_err(|e| Error::from_reason(format!("Failed to read '{}': {}", relative_path, e)))?;
+        type_files.push(TypeFile {
+          path: relative_path,
+          content,
         });
       }
     }
@@ -158,68 +216,51 @@ pub fn load_dmn_model(path: String) -> Result<FlowGraph> {
   Ok(FlowGraph {
     nodes,
     edges,
-    model_name: definitions.feel_name().to_string(),
-    model_namespace: definitions.namespace().to_string(),
+    project_name,
+    type_files,
   })
 }
 
-/// Evaluates a DMN model with provided input data and returns execution trace.
+/// Parses a decision table from a markdown DMN file and returns structured info.
 #[napi]
-pub fn evaluate_with_trace(model_path: String, input_json: String) -> Result<EvaluationTrace> {
-  let xml_content = std::fs::read_to_string(&model_path).map_err(|e| Error::from_reason(format!("Failed to read file '{}': {}", model_path, e)))?;
-  let definitions = dsntk_model::parse(&xml_content).map_err(|e| Error::from_reason(format!("Failed to parse DMN model: {}", e)))?;
+pub fn parse_decision_table(file_path: String) -> Result<DecisionTableInfo> {
+  let content = std::fs::read_to_string(&file_path).map_err(|e| Error::from_reason(format!("Failed to read '{}': {}", file_path, e)))?;
 
-  let model_evaluator =
-    dsntk_model_evaluator::ModelEvaluator::new(&[definitions.clone()]).map_err(|e| Error::from_reason(format!("Failed to build model evaluator: {}", e)))?;
+  let front_matter = parse_front_matter(&content).map_err(|e| Error::from_reason(format!("Failed to parse front matter: {}", e)))?;
 
-  let input_value: serde_json::Value =
-    serde_json::from_str(&input_json).map_err(|e| Error::from_reason(format!("Failed to parse input JSON: {}", e)))?;
-  let input_context = json_to_feel_context(&input_value);
+  let body = dsntk_type_registry::front_matter::extract_body(&content).unwrap_or("");
 
-  let mut node_results = HashMap::new();
-  let model_namespace = definitions.namespace().to_string();
-  let model_name = definitions.feel_name().to_string();
-  let mut final_output = String::from("null");
+  let dt = dsntk_recognizer::from_markdown(body, false).map_err(|e| Error::from_reason(format!("Failed to parse decision table: {}", e)))?;
 
-  for decision in definitions.decisions() {
-    let decision_name = decision.feel_name().to_string();
-    let result = model_evaluator.evaluate_invocable(&model_namespace, &model_name, &decision_name, &input_context);
+  let input_columns: Vec<String> = dt.input_clauses.iter().map(|ic| ic.input_expression.clone()).collect();
 
-    let status = if result.is_null() { "miss" } else { "hit" };
-    let value_str = format!("{}", result);
-    final_output = value_str.clone();
+  let output_columns: Vec<String> = dt
+    .output_clauses
+    .iter()
+    .map(|oc| oc.output_component_name.clone().unwrap_or_default())
+    .collect();
 
-    node_results.insert(
-      decision.id().clone(),
-      NodeTrace {
-        status: status.to_string(),
-        value: value_str,
-        table_traces: Vec::new(),
-      },
-    );
-  }
+  let rules: Vec<DecisionRuleInfo> = dt
+    .rules
+    .iter()
+    .enumerate()
+    .map(|(i, rule)| {
+      let input_entries: Vec<String> = rule.input_entries.iter().map(|ie| ie.text.clone()).collect();
+      let output_entries: Vec<String> = rule.output_entries.iter().map(|oe| oe.text.clone()).collect();
+      DecisionRuleInfo {
+        index: i as u32,
+        input_entries,
+        output_entries,
+      }
+    })
+    .collect();
 
-  for input in definitions.input_data() {
-    let input_name = input.feel_name().to_string();
-    let provided = input_context.get_entry(&dsntk_feel::Name::from(input_name.as_str()));
-    let (status, value_str) = if let Some(val) = provided {
-      ("hit", format!("{}", val))
-    } else {
-      ("ignored", "not provided".to_string())
-    };
-    node_results.insert(
-      input.id().clone(),
-      NodeTrace {
-        status: status.to_string(),
-        value: value_str,
-        table_traces: Vec::new(),
-      },
-    );
-  }
-
-  Ok(EvaluationTrace {
-    node_results,
-    output_value: final_output,
+  Ok(DecisionTableInfo {
+    node_id: front_matter.dmn.id,
+    hit_policy: format!("{}", dt.hit_policy),
+    input_columns,
+    output_columns,
+    rules,
   })
 }
 
