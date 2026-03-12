@@ -1,0 +1,26 @@
+[package]
+name = "dsntk-node"
+version = "0.3.0-dev"
+authors = ["Dariusz Depta <depta@engos.de>"]
+description = "dsntk | DecisionToolkit | napi-rs bridge for Node.js"
+repository = "https://github.com/DecisionToolkit/dsntk-rs.git"
+license = "MIT OR Apache-2.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", features = ["napi4"] }
+napi-derive = "2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+dsntk-common = { path = "../../common" }
+dsntk-feel = { path = "../../feel" }
+dsntk-feel-evaluator = { path = "../../feel-evaluator" }
+dsntk-feel-parser = { path = "../../feel-parser" }
+dsntk-model = { path = "../../model" }
+dsntk-model-evaluator = { path = "../../model-evaluator" }
+
+[build-dependencies]
+napi-build = "2"

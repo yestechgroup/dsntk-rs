@@ -1,0 +1,21 @@
+{
+  "name": "@dsntk/node",
+  "version": "0.3.0-dev",
+  "description": "Node.js native bindings for dsntk DMN evaluation engine",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "napi": {
+    "name": "dsntk-node",
+    "triples": {
+      "defaults": true
+    }
+  },
+  "scripts": {
+    "build": "napi build --release",
+    "build:debug": "napi build"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0"
+  },
+  "license": "MIT OR Apache-2.0"
+}

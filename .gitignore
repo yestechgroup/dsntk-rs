@@ -2,3 +2,14 @@ target
 .idea
 benchmarks.txt
 scripts
+
+# Node.js / Frontend
+node_modules
+ui/build
+ui/.svelte-kit
+crates/dsntk-node/*.node
+crates/dsntk-node/index.js
+crates/dsntk-node/index.d.ts
+
+# Tauri
+src-tauri/target
