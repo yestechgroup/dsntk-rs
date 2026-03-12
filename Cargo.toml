@@ -20,6 +20,7 @@ members = [
     "model-evaluator",
     "recognizer",
     "server",
+    "type-registry",
     "workspace"
 ]
 
@@ -72,4 +73,10 @@ dsntk-model = { path = "model" }
 dsntk-model-evaluator = { path = "model-evaluator" }
 dsntk-recognizer = { path = "recognizer" }
 dsntk-server = { path = "server" }
+dsntk-type-registry = { path = "type-registry" }
 dsntk-workspace = { path = "workspace" }
+oxc_allocator = "0.117.0"
+oxc_ast = "0.117.0"
+oxc_parser = "0.117.0"
+oxc_span = "0.117.0"
+serde_yml = "0.0.12"
