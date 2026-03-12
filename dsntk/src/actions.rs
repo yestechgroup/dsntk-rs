@@ -106,10 +106,16 @@ const COMMAND_XFE: AppCommand = AppCommand {
   display_order: 13,
 };
 
+const COMMAND_TYP: AppCommand = AppCommand {
+  name: "typ",
+  about: "List or check resolved types",
+  display_order: 14,
+};
+
 const COMMAND_EXS: AppCommand = AppCommand {
   name: "exs",
   about: "Save examples",
-  display_order: 14,
+  display_order: 15,
 };
 
 /// Supported decision table input file formats.
@@ -245,6 +251,13 @@ enum Action {
     /// Flag indicating if more detailed information should be displayed during startup.
     bool,
   ),
+  /// List or check resolved types.
+  ListTypes(
+    /// Directory to scan for DMN files.
+    String,
+    /// Check-only mode (validate without listing).
+    bool,
+  ),
   /// Save examples.
   SaveExamples(
     /// Directory where examples are saved.
@@ -308,6 +321,10 @@ pub async fn do_action() -> std::io::Result<()> {
     Action::StartService(opt_host, opt_port, opt_dir, cm, verbose) => {
       // Start a REST API server.
       dsntk_server::start_server(opt_host, opt_port, opt_dir, cm, verbose).await
+    }
+    Action::ListTypes(dir, check_only) => {
+      list_types(&dir, check_only);
+      Ok(())
     }
     Action::SaveExamples(root_dir) => {
       // Save the examples in the specified root directory.
@@ -598,6 +615,20 @@ fn get_matches() -> ArgMatches {
             .display_order(4),
         ),
     )
+    // typ - List or check resolved types
+    .subcommand(
+      Command::new(COMMAND_TYP.name)
+        .about(COMMAND_TYP.about)
+        .display_order(COMMAND_TYP.display_order)
+        .arg(
+          arg!(--"check")
+            .help("Validate type references without listing")
+            .short('k')
+            .action(ArgAction::SetTrue)
+            .display_order(1),
+        )
+        .arg(arg!(<DIR>).help("Directory containing DMN project files").required(true).index(1)),
+    )
     // exs - Save examples
     .subcommand(
       Command::new(COMMAND_EXS.name)
@@ -716,6 +747,10 @@ fn get_cli_action() -> Action {
         match_color(matches),
         match_verbose(matches),
       );
+    }
+    // list or check resolved types
+    Some(("typ", matches)) => {
+      return Action::ListTypes(match_string(matches, "DIR"), matches.get_flag("check"));
     }
     // generate examples
     Some(("exs", matches)) => {
@@ -1095,6 +1130,46 @@ fn export_dmn_model(dmn_file_name: &str, html_file_name: &str) {
       Err(reason) => eprintln!("ERROR: {reason}"),
     },
     Err(reason) => eprintln!("loading model file `{dmn_file_name}` failed with reason: {reason}"),
+  }
+}
+
+/// Lists or validates resolved types from a DMN project directory.
+fn list_types(dir: &str, check_only: bool) {
+  let path = std::path::Path::new(dir);
+  // Look for a types/ subdirectory or scan the directory itself
+  let types_dir = if path.join("types").is_dir() { path.join("types") } else { path.to_path_buf() };
+  match dsntk_type_registry::scanner::scan_folder(&types_dir) {
+    Ok(registry) => {
+      if check_only {
+        if registry.is_empty() {
+          eprintln!("no types found in '{dir}'");
+          std::process::exit(1);
+        }
+        println!("{} type(s) resolved successfully.", registry.len());
+      } else {
+        if registry.is_empty() {
+          println!("no types found in '{dir}'");
+          return;
+        }
+        let mut entries: Vec<_> = registry.iter().collect();
+        entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        for (name, entry) in &entries {
+          let source = match &entry.source {
+            dsntk_type_registry::TypeSource::Primitive => "<primitive>".to_string(),
+            dsntk_type_registry::TypeSource::TypeScript(p) => p.to_string_lossy().to_string(),
+            dsntk_type_registry::TypeSource::JsonSchema(p) => p.to_string_lossy().to_string(),
+          };
+          println!("  {name}: {} (from {source})", entry.feel_type);
+        }
+        println!("\n{} type(s) total.", entries.len());
+      }
+    }
+    Err(reason) => {
+      eprintln!("ERROR: {reason}");
+      if check_only {
+        std::process::exit(1);
+      }
+    }
   }
 }
 
