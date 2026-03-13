@@ -41,9 +41,14 @@
   let templates = $state<TemplateInfo[]>([]);
   let recentProjects = $state<RecentProject[]>([]);
 
-  // --- Initialization ---
+  // --- Initialization (runs once) ---
+  let initialized = false;
+
   $effect(() => {
-    initialize();
+    if (!initialized) {
+      initialized = true;
+      initialize();
+    }
   });
 
   async function initialize() {
@@ -282,7 +287,8 @@
         onSelectTemplate={handleSelectTemplate}
         onOpenProject={handleOpenProjectDialog}
       />
-    {:else if currentView === 'picker'}
+    {/if}
+    {#if currentView === 'picker'}
       <ProjectPicker
         projects={recentProjects}
         onSelectProject={handleSelectRecentProject}
@@ -290,7 +296,8 @@
         onOpenProject={handleOpenProjectDialog}
         onNewProject={goToWelcome}
       />
-    {:else}
+    {/if}
+    {#if currentView === 'editor'}
       <div class="main-content">
         <div class="canvas-area">
           {#if nodes.length > 0}
