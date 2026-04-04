@@ -53,3 +53,26 @@ pub fn err_bkm_invocation_arity(bkm_name: &str, expected: usize, actual: usize) 
 pub fn err_enum_violation(value: &str, allowed: &[String]) -> DsntkError {
   TypeRegistryError(format!("value '{value}' is not in allowed values: [{}]", allowed.join(", "))).into()
 }
+
+pub fn err_drg_cycle(cycle_path: &str) -> DsntkError {
+  TypeRegistryError(format!("cycle detected in decision requirements graph: {cycle_path}")).into()
+}
+
+pub fn err_drg_unresolved_link(source_file: &str, target_id: &str) -> DsntkError {
+  TypeRegistryError(format!("unresolved link in '{source_file}': target node '{target_id}' not found")).into()
+}
+
+pub fn err_drg_duplicate_node_id(id: &str, file1: &str, file2: &str) -> DsntkError {
+  TypeRegistryError(format!("duplicate node id '{id}' in '{file1}' and '{file2}'")).into()
+}
+
+pub fn err_drg_no_md_files(dir: &str) -> DsntkError {
+  TypeRegistryError(format!("no markdown DMN files found in '{dir}'")).into()
+}
+
+pub fn err_drg_invalid_edge_type(source_id: &str, link_key: &str, target_id: &str, expected_type: &str, actual_type: &str) -> DsntkError {
+  TypeRegistryError(format!(
+    "node '{source_id}' has '{link_key}' link to '{target_id}' which is type '{actual_type}', expected '{expected_type}'"
+  ))
+  .into()
+}
