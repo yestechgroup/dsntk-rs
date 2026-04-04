@@ -9,6 +9,7 @@ extern crate dsntk_macros;
 pub mod errors;
 pub mod exporter;
 pub mod front_matter;
+pub mod graph;
 pub mod json_schema_parser;
 pub mod primitive;
 pub mod registry;
@@ -20,4 +21,5 @@ pub mod ts_parser;
 mod tests;
 
 pub use front_matter::{parse_front_matter, BkmParameter, BkmSignature, DataTypeRef, DmnNode, DmnNodeType, FrontMatter};
+pub use graph::{build_drg, Drg, DrgEdgeKind, DrgNode};
 pub use registry::{TypeEntry, TypeRegistry, TypeSource};
