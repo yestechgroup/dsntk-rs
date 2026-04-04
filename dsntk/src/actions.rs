@@ -119,10 +119,16 @@ const COMMAND_EXS: AppCommand = AppCommand {
   display_order: 15,
 };
 
+const COMMAND_VAL: AppCommand = AppCommand {
+  name: "val",
+  about: "Validate a markdown DMN project",
+  display_order: 16,
+};
+
 const COMMAND_NEW: AppCommand = AppCommand {
   name: "new",
   about: "Create a new project from a template",
-  display_order: 16,
+  display_order: 17,
 };
 
 /// Supported decision table input file formats.
@@ -265,6 +271,11 @@ enum Action {
     /// Check-only mode (validate without listing).
     bool,
   ),
+  /// Validate a markdown DMN project.
+  ValidateProject(
+    /// Directory containing the DMN project.
+    String,
+  ),
   /// Save examples.
   SaveExamples(
     /// Directory where examples are saved.
@@ -342,6 +353,10 @@ pub async fn do_action() -> std::io::Result<()> {
     }
     Action::ListTypes(dir, check_only) => {
       list_types(&dir, check_only);
+      Ok(())
+    }
+    Action::ValidateProject(dir) => {
+      validate_project(&dir);
       Ok(())
     }
     Action::SaveExamples(root_dir) => {
@@ -651,6 +666,13 @@ fn get_matches() -> ArgMatches {
         )
         .arg(arg!(<DIR>).help("Directory containing DMN project files").required(true).index(1)),
     )
+    // val - Validate a markdown DMN project
+    .subcommand(
+      Command::new(COMMAND_VAL.name)
+        .about(COMMAND_VAL.about)
+        .display_order(COMMAND_VAL.display_order)
+        .arg(arg!(<DIR>).help("Directory containing DMN project files").required(false).default_value(".").index(1)),
+    )
     // exs - Save examples
     .subcommand(
       Command::new(COMMAND_EXS.name)
@@ -783,6 +805,10 @@ fn get_cli_action() -> Action {
     // list or check resolved types
     Some(("typ", matches)) => {
       return Action::ListTypes(match_string(matches, "DIR"), matches.get_flag("check"));
+    }
+    // validate a markdown DMN project
+    Some(("val", matches)) => {
+      return Action::ValidateProject(match_string(matches, "DIR"));
     }
     // generate examples
     Some(("exs", matches)) => {
@@ -1171,6 +1197,33 @@ fn export_dmn_model(dmn_file_name: &str, html_file_name: &str) {
       Err(reason) => eprintln!("ERROR: {reason}"),
     },
     Err(reason) => eprintln!("loading model file `{dmn_file_name}` failed with reason: {reason}"),
+  }
+}
+
+/// Validates a markdown DMN project by building and checking its Decision Requirements Graph.
+fn validate_project(dir: &str) {
+  let path = std::path::Path::new(dir);
+  match dsntk_type_registry::build_drg(path) {
+    Ok(drg) => {
+      let order = match drg.topological_order() {
+        Ok(order) => order,
+        Err(e) => {
+          eprintln!("Validation failed: {e}");
+          std::process::exit(1);
+        }
+      };
+      println!("Project is valid.");
+      println!("  Nodes: {}", drg.node_count());
+      println!("  Edges: {}", drg.edge_count());
+      println!("  Evaluation order:");
+      for (i, id) in order.iter().enumerate() {
+        println!("    {}. {id}", i + 1);
+      }
+    }
+    Err(e) => {
+      eprintln!("Validation failed: {e}");
+      std::process::exit(1);
+    }
   }
 }
 
