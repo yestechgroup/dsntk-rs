@@ -28,6 +28,7 @@ export interface FinancialStatements {
   "Total Assets": number;
   "Accounts Type": string;
   "Accounts Age": number;
+  "Leverage Ratio": number;
 }
 
 export interface LoanRequest {

@@ -31,10 +31,10 @@ rule 16 is a universal requirement).
 > # Conditions of Approval
 > Conditions
 
-| C  | Decision              | Pricing Tier | Collateral Grade | DSCR        | Sector Risk | Accounts Quality | Property Risk    | Term Months | Condition                                          | Category     |
+| C  | Decision              | Pricing Tier | Collateral Grade | DSCR        | SectorRisk  | Accounts Quality | Property Risk    | Term Months | Condition                                          | Category     |
 |:--:|:---------------------:|:------------:|:----------------:|:-----------:|:-----------:|:----------------:|:----------------:|:-----------:|:--------------------------------------------------:|:------------:|
 |    | `in`                  | `in`         | `in`             | `in`        | `in`        | `in`             | `in`             | `in`        | `out`                                              | `out`        |
-|  1 | "Declined"            | -            | -                | -           | -           | -                | -                | -           | -                                                  | -            |
+|  1 | "Declined"            | -            | -                | -           | -           | -                | -                | -           | null                                               | null         |
 |  2 | "Approved","Referred" | -            | "Marginal","Weak"| -           | -           | -                | -                | -           | "Independent valuation within 12 months"           | "Collateral" |
 |  3 | "Approved","Referred" | -            | "Weak"           | -           | -           | -                | -                | -           | "Additional security or personal guarantee required"| "Collateral"|
 |  4 | "Approved","Referred" | -            | -                | [1.00..1.10)| -           | -                | -                | -           | "Quarterly DSCR monitoring covenant"               | "Financial"  |

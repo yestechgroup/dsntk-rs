@@ -488,9 +488,26 @@ async fn evaluate_project(body: web::Json<EvaluateProjectRequest>) -> HttpRespon
         };
 
         // Store the result in scope so downstream decisions can use it.
+        // Store under the decision name (e.g., "Sector Risk Assessment").
         let name = Name::new(&[&drg_node.dmn.name]);
         if let Some(mut top_ctx) = scope.pop() {
           top_ctx.set_entry(&name, eval_value.clone());
+          // Also store under each output column name for single-output tables.
+          // Downstream tables reference the output component name, not the decision name.
+          let output_clauses: Vec<_> = model_dt.output_clauses().collect();
+          if output_clauses.len() == 1 {
+            if let Some(ref output_name) = output_clauses[0].name {
+              let out_name = Name::new(&[output_name]);
+              top_ctx.set_entry(&out_name, eval_value.clone());
+            }
+          } else {
+            // For compound outputs, store each component.
+            if let Value::Context(ref out_ctx) = eval_value {
+              for (entry_name, entry_value) in out_ctx.iter() {
+                top_ctx.set_entry(entry_name, entry_value.clone());
+              }
+            }
+          }
           scope.push(top_ctx);
         }
 

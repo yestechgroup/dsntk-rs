@@ -24,9 +24,9 @@ sector compound the uncertainty.
 ## Decision table
 
 > # Sector Risk Assessment
-> Sector Risk
+> SectorRisk
 
-| U  | Sector                 | Years Trading | Accounts Type    | Total Debt / Total Assets | Sector Risk                       |
+| F  | Sector                 | Years Trading | Accounts Type    | Leverage Ratio            | SectorRisk                        |
 |:--:|:----------------------:|:-------------:|:----------------:|:-------------------------:|:---------------------------------:|
 |    |                        |               |                  |                           | "Low","Medium","High","Elevated"  |
 |    | `in`                   | `in`          | `in`             | `in`                      | `out`                             |

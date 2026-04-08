@@ -32,7 +32,7 @@ monitoring requirements to approved or referred facilities.
 > # Final Approval
 > Approval Decision
 
-| F  | Pricing Tier | Credit Grade | Collateral Grade | DSCR        | Sector Risk | Requested Amount | Business Type  | Decision                          | Authority Level      |
+| F  | Pricing Tier | Credit Grade | Collateral Grade | DSCR        | SectorRisk | Requested Amount | Business Type  | Decision                          | Authority Level      |
 |:--:|:------------:|:------------:|:----------------:|:-----------:|:-----------:|:----------------:|:--------------:|:---------------------------------:|:--------------------:|
 |    |              |              |                  |             |             |                  |                | "Approved","Referred","Declined"  |                      |
 |    | `in`         | `in`         | `in`             | `in`        | `in`        | `in`             | `in`           | `out`                             | `out`                |

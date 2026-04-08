@@ -11,6 +11,7 @@ use walkdir::WalkDir;
 mod compatibility;
 mod exhaustive;
 mod input_data;
+mod markdown_eval;
 mod simulation;
 mod temporal_functions;
 mod various;
@@ -54,12 +55,7 @@ macro_rules! static_context {
 }
 
 use dsntk_model::NamedElement;
-use from_examples;
-use model_evaluator;
-use model_evaluator_from_examples;
-use model_name_from_examples;
-use model_namespace_from_examples;
-use static_context;
+use {from_examples, model_evaluator, model_evaluator_from_examples, model_name_from_examples, model_namespace_from_examples, static_context};
 
 /// Utility function that creates a `FEEL` context from specified input expression.
 pub fn context(input: &str) -> FeelContext {

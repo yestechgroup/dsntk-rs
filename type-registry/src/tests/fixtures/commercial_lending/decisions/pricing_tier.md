@@ -28,7 +28,7 @@ hard floor of 1.0 is also enforced.
 > # Pricing Tier
 > Pricing Tier
 
-| P  | Credit Grade | Collateral Grade | DSCR     | Sector Risk | Accounts Quality | Pricing Tier                | Base Rate |
+| P  | Credit Grade | Collateral Grade | DSCR     | SectorRisk | Accounts Quality | Pricing Tier                | Base Rate |
 |:--:|:------------:|:----------------:|:--------:|:-----------:|:----------------:|:---------------------------:|:---------:|
 |    |              |                  |          |             |                  | "T1","T2","T3","T4","T5","Decline" |    |
 |    | `in`         | `in`             | `in`     | `in`        | `in`             | `out`                       | `out`     |
