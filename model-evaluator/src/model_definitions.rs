@@ -726,6 +726,71 @@ impl DefDefinitions {
   pub fn input_data_by_key(&self, namespace: &str, id: &str) -> Option<&DefInputData> {
     self.input_data.get(&DefKey::new(namespace, id))
   }
+
+  /// Extracts the DRG topology (nodes and edges) from this set of definitions.
+  pub fn to_trace_graph(&self) -> crate::trace::TraceGraph {
+    let mut nodes = Vec::new();
+    let mut edges = Vec::new();
+    // Create InputData nodes.
+    for (key, input_data) in &self.input_data {
+      nodes.push(crate::trace::TraceNode::InputData {
+        id: key.to_string(),
+        name: input_data.name().to_string(),
+        value: None,
+      });
+    }
+    // Create DecisionTable nodes and edges from information requirements.
+    for (key, decision) in &self.decisions {
+      let (hit_policy, input_columns, output_columns, rules) = match decision.decision_logic() {
+        Some(ExpressionInstance::DecisionTable(dt)) => {
+          let hp = format!("{}", dt.hit_policy());
+          let inputs: Vec<String> = dt.input_clauses().map(|ic| ic.input_expression.clone()).collect();
+          let outputs: Vec<String> = dt.output_clauses().map(|oc| oc.name.clone().unwrap_or_default()).collect();
+          let rs: Vec<crate::trace::TraceRule> = dt
+            .rules()
+            .enumerate()
+            .map(|(i, rule)| crate::trace::TraceRule {
+              index: i,
+              input_entries: rule.input_entries.iter().map(|ie| ie.text.clone()).collect(),
+              output_entries: rule.output_entries.iter().map(|oe| oe.text.clone()).collect(),
+            })
+            .collect();
+          (hp, inputs, outputs, rs)
+        }
+        _ => (String::new(), vec![], vec![], vec![]),
+      };
+      nodes.push(crate::trace::TraceNode::DecisionTable {
+        id: key.to_string(),
+        name: decision.name().to_string(),
+        hit_policy,
+        input_columns,
+        output_columns,
+        rules,
+      });
+      // Create edges from information requirements.
+      for req in decision.information_requirements() {
+        if let Some(href) = req.required_decision() {
+          let source_key = DefKey::from(href);
+          let source_name = self.decisions.get(&source_key).map(|d| d.name().to_string()).unwrap_or_default();
+          edges.push(crate::trace::TraceEdge {
+            source: source_key.to_string(),
+            target: key.to_string(),
+            label: source_name,
+          });
+        }
+        if let Some(href) = req.required_input() {
+          let source_key = DefKey::from(href);
+          let source_name = self.input_data.get(&source_key).map(|d| d.name().to_string()).unwrap_or_default();
+          edges.push(crate::trace::TraceEdge {
+            source: source_key.to_string(),
+            target: key.to_string(),
+            label: source_name,
+          });
+        }
+      }
+    }
+    crate::trace::TraceGraph { nodes, edges }
+  }
 }
 
 /// Returns a name of the import for specified namespace.
