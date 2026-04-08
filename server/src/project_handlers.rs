@@ -12,7 +12,7 @@ use dsntk_model_evaluator::evaluate_decision_table_with_trace;
 use dsntk_type_registry::front_matter::extract_body;
 use dsntk_type_registry::resolver::resolve_data_type;
 use dsntk_type_registry::scanner::scan_folder;
-use dsntk_type_registry::{build_drg, DrgEdgeKind, TypeRegistry};
+use dsntk_type_registry::{build_drg, TypeRegistry};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -569,23 +569,6 @@ async fn evaluate_project(body: web::Json<EvaluateProjectRequest>) -> HttpRespon
     .content_type(CONTENT_TYPE)
     .body(serde_json::to_string(&response).unwrap_or_else(|_| r#"{"error":"serialization failed"}"#.to_string()))
 }
-
-/// Converts camelCase to Title Case (e.g., "bureauScore" -> "Bureau Score").
-fn camel_to_title_case(s: &str) -> String {
-  let mut result = String::with_capacity(s.len() + 4);
-  for (i, ch) in s.chars().enumerate() {
-    if ch.is_uppercase() && i > 0 {
-      result.push(' ');
-    }
-    if i == 0 {
-      result.extend(ch.to_uppercase());
-    } else {
-      result.push(ch);
-    }
-  }
-  result
-}
-
 /// Converts a JSON value to a FEEL value.
 fn json_to_feel_value(json: &serde_json::Value) -> Value {
   match json {
