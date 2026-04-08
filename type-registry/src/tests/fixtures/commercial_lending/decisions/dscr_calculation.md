@@ -3,17 +3,8 @@ dmn:
   id: dscr_calculation
   type: bkm
   name: DSCR Calculation
-  signature:
-    parameters:
-      - name: netProfit
-        type: number
-      - name: depreciation
-        type: number
-      - name: interestExpense
-        type: number
-      - name: annualDebtService
-        type: number
-    return-type: number
+  feel-expression: (Net Profit + Depreciation + Interest Expense) / Annual Debt Service
+  output-name: DSCR
   requires:
     - financial_statements
     - loan_request

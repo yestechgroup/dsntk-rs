@@ -3,13 +3,8 @@ dmn:
   id: ltv_calculation
   type: bkm
   name: LTV Calculation
-  signature:
-    parameters:
-      - name: requestedAmount
-        type: number
-      - name: valuationAmount
-        type: number
-    return-type: number
+  feel-expression: Requested Amount / Valuation Amount
+  output-name: LTV
   requires:
     - loan_request
     - property_data
