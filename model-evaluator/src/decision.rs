@@ -4,6 +4,7 @@ use crate::boxed_expressions::*;
 use crate::model_builder::ModelBuilder;
 use crate::model_definitions::*;
 use crate::model_evaluator::ModelEvaluator;
+use crate::trace::{trace_is_active, trace_push_step, TraceStep};
 use crate::variable::Variable;
 use dsntk_common::Result;
 use dsntk_feel::context::FeelContext;
@@ -153,6 +154,9 @@ fn build_decision_evaluator(def_definitions: &DefDefinitions, def_decision: &Def
     }
   }
 
+  // prepare the node identifier for tracing
+  let trace_node_id = DefKey::new(def_decision.namespace(), def_decision.id()).to_string();
+
   // build decision evaluator closure
   let decision_evaluator = Box::new(
     move |global_context: &FeelContext, input_data_ctx: &FeelContext, model_evaluator: &ModelEvaluator, output_data_ctx: &mut FeelContext| {
@@ -230,6 +234,17 @@ fn build_decision_evaluator(def_definitions: &DefDefinitions, def_decision: &Def
 
       // coerce the output value
       let coerced_decision_result = decision_result.coerced(&output_variable_type);
+
+      // push trace step if tracing is active
+      if trace_is_active() {
+        trace_push_step(TraceStep {
+          node_id: trace_node_id.clone(),
+          input_values: HashMap::new(),
+          matched_rules: vec![],
+          output_value: serde_json::json!(format!("{}", coerced_decision_result)),
+          cell_evaluations: vec![],
+        });
+      }
 
       // place the result under the name of the output variable
       output_data_ctx.set_entry(&output_variable_name, coerced_decision_result);
