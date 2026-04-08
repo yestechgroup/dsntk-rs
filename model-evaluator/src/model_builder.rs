@@ -13,6 +13,7 @@ use dsntk_model::Definitions;
 use std::cell::RefCell;
 
 pub struct EvaluatorBuilders {
+  pub model_definitions: DefDefinitions,
   pub input_data_evaluator: InputDataEvaluator,
   pub item_definition_evaluator: ItemDefinitionEvaluator,
   pub business_knowledge_model_evaluator: BusinessKnowledgeModelEvaluator,
@@ -109,6 +110,7 @@ impl ModelBuilder {
 impl From<ModelBuilder> for EvaluatorBuilders {
   fn from(value: ModelBuilder) -> Self {
     Self {
+      model_definitions: value.model_definitions,
       input_data_evaluator: value.input_data_evaluator,
       item_definition_evaluator: value.item_definition_evaluator,
       business_knowledge_model_evaluator: value.business_knowledge_model_evaluator,

@@ -6,7 +6,7 @@ use crate::decision_service::DecisionServiceEvaluator;
 use crate::input_data::InputDataEvaluator;
 use crate::item_definition::ItemDefinitionEvaluator;
 use crate::model_builder::{EvaluatorBuilders, ModelBuilder};
-use crate::model_definitions::{DefKey, InvocableType, Invocables};
+use crate::model_definitions::{DefDefinitions, DefKey, InvocableType, Invocables};
 use dsntk_common::Result;
 use dsntk_feel::context::FeelContext;
 use dsntk_feel::values::Value;
@@ -16,6 +16,8 @@ use std::sync::Arc;
 
 /// Model evaluator.
 pub struct ModelEvaluator {
+  /// Model definitions used for trace graph extraction.
+  model_definitions: DefDefinitions,
   /// Input data evaluator.
   input_data_evaluator: InputDataEvaluator,
   /// Item definition evaluator.
@@ -41,6 +43,7 @@ impl From<ModelBuilder> for ModelEvaluator {
       global_context.set_entry(&Name::from(def_key.id()), Value::FeelType(feel_type))
     }
     Self {
+      model_definitions: builders.model_definitions,
       input_data_evaluator: builders.input_data_evaluator,
       item_definition_evaluator: builders.item_definition_evaluator,
       business_knowledge_model_evaluator: builders.business_knowledge_model_evaluator,
@@ -112,6 +115,28 @@ impl ModelEvaluator {
         self.evaluate_decision_service(def_key, input_data)
       }
     }
+  }
+
+  /// Evaluates an invocable with trace collection enabled.
+  pub fn evaluate_invocable_traced(
+    &self,
+    model_namespace: &str,
+    model_name: &str,
+    invocable_name: &str,
+    input_data: &FeelContext,
+  ) -> (Value, Option<crate::trace::EvaluationTrace>) {
+    crate::trace::trace_start();
+    let result = self.evaluate_invocable(model_namespace, model_name, invocable_name, input_data);
+    let trace = crate::trace::trace_finish().map(|collector| {
+      let graph = self.model_definitions.to_trace_graph();
+      let evaluation_order = collector.steps.iter().map(|s| s.node_id.clone()).collect();
+      crate::trace::EvaluationTrace {
+        graph,
+        evaluation_order,
+        steps: collector.steps,
+      }
+    });
+    (result, trace)
   }
 
   /// Evaluates a decision.
