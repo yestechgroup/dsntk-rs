@@ -23,11 +23,13 @@ pub struct TraceGraph {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
 pub enum TraceNode {
+  #[serde(rename = "input_data")]
   InputData {
     id: String,
     name: String,
     value: Option<serde_json::Value>,
   },
+  #[serde(rename = "decision_table")]
   DecisionTable {
     id: String,
     name: String,
@@ -161,8 +163,8 @@ mod tests {
       }],
     };
     let json = serde_json::to_string(&graph).unwrap();
-    assert!(json.contains("\"type\":\"InputData\""));
-    assert!(json.contains("\"type\":\"DecisionTable\""));
+    assert!(json.contains("\"type\":\"input_data\""));
+    assert!(json.contains("\"type\":\"decision_table\""));
     assert!(json.contains("\"hit_policy\":\"UNIQUE\""));
     assert!(json.contains("\"source\":\"input1\""));
     assert!(json.contains("\"target\":\"dt1\""));
