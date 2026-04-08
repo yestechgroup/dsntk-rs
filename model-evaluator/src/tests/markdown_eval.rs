@@ -213,3 +213,75 @@ fn _0010() {
   let result = eval_markdown(PRIORITY_TABLE, &scope);
   assert_eq!(result.value, str_val("T1"));
 }
+
+// ---------------------------------------------------------------------------
+// FEEL expression evaluation (not decision tables)
+// ---------------------------------------------------------------------------
+
+/// FEEL expression: simple division with multi-word names in scope.
+#[test]
+fn _0011() {
+  let scope = scope_with(&[("Requested Amount", num("350000")), ("Valuation Amount", num("750000"))]);
+  let ast = dsntk_feel_parser::parse_expression(&scope, "Requested Amount / Valuation Amount", false).expect("failed to parse expression");
+  let evaluator = dsntk_feel_evaluator::prepare(&ast);
+  let result = evaluator(&scope);
+  // 350000 / 750000 = 0.466666...
+  match &result {
+    Value::Number(n) => {
+      let expected: dsntk_feel::FeelNumber = "0.4666666666666666666666666666666667".parse().unwrap();
+      assert_eq!(*n, expected);
+    }
+    other => panic!("expected number, got: {other}"),
+  }
+}
+
+/// FEEL expression: DSCR formula (net profit + depreciation + interest) / debt service.
+#[test]
+fn _0012() {
+  let scope = scope_with(&[
+    ("Net Profit", num("680000")),
+    ("Depreciation", num("45000")),
+    ("Interest Expense", num("32000")),
+    ("Annual Debt Service", num("70000")),
+  ]);
+  let ast = dsntk_feel_parser::parse_expression(&scope, "(Net Profit + Depreciation + Interest Expense) / Annual Debt Service", false).expect("failed to parse DSCR expression");
+  let evaluator = dsntk_feel_evaluator::prepare(&ast);
+  let result = evaluator(&scope);
+  // (680000 + 45000 + 32000) / 70000 = 10.81428...
+  match &result {
+    Value::Number(_) => {} // Just verify it's a number, not null
+    other => panic!("expected number, got: {other}"),
+  }
+}
+
+/// FEEL expression: division by zero returns null.
+#[test]
+fn _0013() {
+  let scope = scope_with(&[("Requested Amount", num("350000")), ("Valuation Amount", num("0"))]);
+  let ast = dsntk_feel_parser::parse_expression(&scope, "Requested Amount / Valuation Amount", false).expect("failed to parse expression");
+  let evaluator = dsntk_feel_evaluator::prepare(&ast);
+  let result = evaluator(&scope);
+  match &result {
+    Value::Null(_) => {}
+    other => panic!("expected null for division by zero, got: {other}"),
+  }
+}
+
+/// FEEL expression: missing name in scope produces null.
+#[test]
+fn _0014() {
+  let scope = scope_with(&[("Requested Amount", num("350000"))]);
+  // "Valuation Amount" is NOT in scope — parser may fail or evaluator returns null
+  let ast = dsntk_feel_parser::parse_expression(&scope, "Requested Amount / Valuation Amount", false);
+  match ast {
+    Ok(node) => {
+      let evaluator = dsntk_feel_evaluator::prepare(&node);
+      let result = evaluator(&scope);
+      match &result {
+        Value::Null(_) => {}
+        other => panic!("expected null for missing name, got: {other}"),
+      }
+    }
+    Err(_) => {} // Parser rejection is also acceptable
+  }
+}
