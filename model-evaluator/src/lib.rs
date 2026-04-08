@@ -15,6 +15,7 @@ mod item_definition_type;
 mod model_builder;
 mod model_definitions;
 mod model_evaluator;
+pub mod trace;
 mod type_ref;
 mod variable;
 
