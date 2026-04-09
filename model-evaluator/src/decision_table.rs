@@ -1,5 +1,6 @@
 //! Builder for decision table evaluators.
 
+use crate::trace::{trace_finish, trace_is_active, trace_start, CellEvaluation};
 use dsntk_common::Result;
 use dsntk_feel::context::FeelContext;
 use dsntk_feel::values::Value;
@@ -90,6 +91,7 @@ struct EvaluatedDecisionTable {
   output_values: Vec<Value>,
   default_output_values: Vec<Value>,
   evaluated_rules: Vec<EvaluatedRule>,
+  cell_evaluations: Vec<CellEvaluation>,
 }
 
 impl EvaluatedDecisionTable {
@@ -397,11 +399,13 @@ fn evaluate_parsed_decision_table(scope: &FeelScope, parsed_decision_table: &Par
     }
   }
   // evaluate all rules
+  let tracing = trace_is_active();
+  let mut cell_evaluations = vec![];
   let mut evaluated_rules = vec![];
-  for parsed_rule in parsed_decision_table.rules.iter() {
+  for (rule_index, parsed_rule) in parsed_decision_table.rules.iter().enumerate() {
     let mut input_entry_values = vec![];
     let mut matches = true;
-    for evaluator in parsed_rule.input_entries_evaluators.iter() {
+    for (col_index, evaluator) in parsed_rule.input_entries_evaluators.iter().enumerate() {
       let input_value: Value = evaluator(scope);
 
       // Handle expression lists containing comparison results
@@ -412,6 +416,16 @@ fn evaluate_parsed_decision_table(scope: &FeelScope, parsed_decision_table: &Par
         }
         _ => input_value.is_true(),
       };
+
+      if tracing {
+        cell_evaluations.push(CellEvaluation {
+          rule_index,
+          column_index: col_index,
+          expression: String::new(),
+          input_value: serde_json::json!(format!("{}", input_value)),
+          result: is_true,
+        });
+      }
 
       if !is_true {
         matches = false;
@@ -429,7 +443,57 @@ fn evaluate_parsed_decision_table(scope: &FeelScope, parsed_decision_table: &Par
     output_values,
     default_output_values,
     evaluated_rules,
+    cell_evaluations,
   }
+}
+
+/// Result of evaluating a decision table with tracing info.
+pub struct DecisionTableEvalResult {
+  /// The final output value.
+  pub value: Value,
+  /// Indices of matched rules (0-based).
+  pub matched_rules: Vec<usize>,
+  /// Cell-level evaluation details.
+  pub cell_evaluations: Vec<CellEvaluation>,
+}
+
+/// Evaluates a decision table and returns the result with matched rule indices.
+pub fn evaluate_decision_table_with_trace(scope: &FeelScope, decision_table: &DecisionTable) -> Result<DecisionTableEvalResult> {
+  let hit_policy = decision_table.hit_policy();
+  let parsed_decision_table = parse_decision_table(scope, decision_table)?;
+  // Force tracing for cell evaluations by starting trace.
+  let was_active = trace_is_active();
+  if !was_active {
+    trace_start();
+  }
+  let evaluated = evaluate_parsed_decision_table(scope, &parsed_decision_table);
+  if !was_active {
+    let _ = trace_finish();
+  }
+  let matched_rules: Vec<usize> = evaluated
+    .evaluated_rules
+    .iter()
+    .enumerate()
+    .filter(|(_, r)| r.matches)
+    .map(|(i, _)| i)
+    .collect();
+  let cell_evaluations = evaluated.cell_evaluations.clone();
+  let value = match hit_policy {
+    HitPolicy::Unique => evaluated.evaluate_hit_policy_unique(),
+    HitPolicy::Any => evaluated.evaluate_hit_policy_any(),
+    HitPolicy::Priority => evaluated.evaluate_hit_policy_priority(),
+    HitPolicy::First => evaluated.evaluate_hit_policy_first(),
+    HitPolicy::RuleOrder => evaluated.evaluate_hit_policy_rule_order(),
+    HitPolicy::OutputOrder => evaluated.evaluate_hit_policy_output_order(),
+    HitPolicy::Collect(aggregator) => match aggregator {
+      BuiltinAggregator::List => evaluated.evaluate_hit_policy_collect_list(),
+      BuiltinAggregator::Count => evaluated.evaluate_hit_policy_collect_count(),
+      BuiltinAggregator::Sum => evaluated.evaluate_hit_policy_collect_sum(),
+      BuiltinAggregator::Min => evaluated.evaluate_hit_policy_collect_min(),
+      BuiltinAggregator::Max => evaluated.evaluate_hit_policy_collect_max(),
+    },
+  };
+  Ok(DecisionTableEvalResult { value, matched_rules, cell_evaluations })
 }
 
 pub fn build_decision_table_evaluator(scope: &FeelScope, decision_table: &DecisionTable) -> Result<Evaluator> {

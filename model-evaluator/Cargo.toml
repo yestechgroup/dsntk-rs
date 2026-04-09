@@ -18,6 +18,8 @@ dsntk-feel-parser = { workspace = true }
 dsntk-feel-temporal = { workspace = true }
 dsntk-macros = { workspace = true }
 dsntk-model = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 antex = { workspace = true }

@@ -114,6 +114,8 @@ fn _0008() {
     requires: None,
     governed_by: None,
     supported_by: None,
+    feel_expression: None,
+    output_name: None,
   };
   let result = validate_bkm_signature(&node);
   assert!(result.is_err());
@@ -136,6 +138,8 @@ fn _0009() {
     requires: None,
     governed_by: Some(vec!["lending_policy".to_string()]),
     supported_by: None,
+    feel_expression: None,
+    output_name: None,
   };
   let ks = DmnNode {
     id: "lending_policy".to_string(),
@@ -148,6 +152,8 @@ fn _0009() {
     requires: None,
     governed_by: None,
     supported_by: None,
+    feel_expression: None,
+    output_name: None,
   };
   assert!(validate_link_targets(&decision, &[ks]).is_ok());
 }
@@ -166,6 +172,8 @@ fn _0010() {
     requires: None,
     governed_by: Some(vec!["bad_target".to_string()]),
     supported_by: None,
+    feel_expression: None,
+    output_name: None,
   };
   let bkm = DmnNode {
     id: "bad_target".to_string(),
@@ -178,6 +186,8 @@ fn _0010() {
     requires: None,
     governed_by: None,
     supported_by: None,
+    feel_expression: None,
+    output_name: None,
   };
   let result = validate_link_targets(&decision, &[bkm]);
   assert!(result.is_err());
@@ -416,6 +426,8 @@ fn _0021() {
     requires: None,
     governed_by: None,
     supported_by: None,
+    feel_expression: None,
+    output_name: None,
   };
   assert!(validate_bkm_signature(&bkm).is_ok());
 }
@@ -441,6 +453,8 @@ fn _0022() {
     requires: None,
     governed_by: None,
     supported_by: None,
+    feel_expression: None,
+    output_name: None,
   };
   let err = validate_bkm_signature(&bkm).unwrap_err();
   assert!(err.to_string().contains("missing a return-type"));
@@ -463,6 +477,8 @@ fn _0023() {
     requires: Some(vec!["risk_assessment".to_string()]),
     governed_by: Some(vec!["state_regulations".to_string()]),
     supported_by: None,
+    feel_expression: None,
+    output_name: None,
   };
   let regulations = DmnNode {
     id: "state_regulations".to_string(),
@@ -475,6 +491,8 @@ fn _0023() {
     requires: None,
     governed_by: None,
     supported_by: None,
+    feel_expression: None,
+    output_name: None,
   };
   assert!(validate_link_targets(&decision, &[regulations]).is_ok());
 }
@@ -496,6 +514,8 @@ fn _0024() {
     requires: None,
     governed_by: Some(vec!["risk_assessment".to_string()]),
     supported_by: None,
+    feel_expression: None,
+    output_name: None,
   };
   let bkm = DmnNode {
     id: "risk_assessment".to_string(),
@@ -508,6 +528,8 @@ fn _0024() {
     requires: None,
     governed_by: None,
     supported_by: None,
+    feel_expression: None,
+    output_name: None,
   };
   let result = validate_link_targets(&decision, &[bkm]);
   assert!(result.is_err());

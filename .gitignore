@@ -2,3 +2,5 @@ target
 .idea
 benchmarks.txt
 scripts
+.worktrees
+.superpowers

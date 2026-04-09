@@ -30,6 +30,10 @@ pub struct DmnNode {
   pub governed_by: Option<Vec<String>>,
   #[serde(rename = "supported-by")]
   pub supported_by: Option<Vec<String>>,
+  #[serde(rename = "feel-expression")]
+  pub feel_expression: Option<String>,
+  #[serde(rename = "output-name")]
+  pub output_name: Option<String>,
 }
 
 /// A data type reference in front matter.

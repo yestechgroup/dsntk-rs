@@ -265,6 +265,8 @@ fn input_data_node(id: &str, name: &str, type_ref: &str) -> DmnNode {
     requires: None,
     governed_by: None,
     supported_by: None,
+    feel_expression: None,
+    output_name: None,
   }
 }
 
@@ -293,6 +295,8 @@ fn bkm_node(id: &str, name: &str, return_type: &str, params: &[(&str, &str)]) ->
     requires: None,
     governed_by: None,
     supported_by: None,
+    feel_expression: None,
+    output_name: None,
   }
 }
 
@@ -323,6 +327,8 @@ fn decision_node(id: &str, name: &str, type_ref: &str, requires: &[&str], govern
     } else {
       Some(supported_by.iter().map(|s| s.to_string()).collect())
     },
+    feel_expression: None,
+    output_name: None,
   }
 }
 
@@ -338,6 +344,8 @@ fn knowledge_source_node(id: &str, name: &str, uri: &str) -> DmnNode {
     requires: None,
     governed_by: None,
     supported_by: None,
+    feel_expression: None,
+    output_name: None,
   }
 }
 
@@ -688,6 +696,8 @@ fn _0020() {
     requires: None,
     governed_by: None,
     supported_by: None,
+    feel_expression: None,
+    output_name: None,
   };
   let err = validate_bkm_signature(&broken_bkm).unwrap_err();
   assert!(err.to_string().contains("missing a return-type"));
@@ -707,6 +717,8 @@ fn _0021() {
     requires: None,
     governed_by: None,
     supported_by: None,
+    feel_expression: None,
+    output_name: None,
   };
   let err = validate_bkm_signature(&no_sig_bkm).unwrap_err();
   assert!(err.to_string().contains("missing a return-type"));
@@ -927,6 +939,8 @@ fn _0037() {
     requires: None,
     governed_by: None,
     supported_by: None,
+    feel_expression: None,
+    output_name: None,
   };
   let result = validate_link_targets(&offer_node, &[fake_decision]);
   assert!(result.is_err());
