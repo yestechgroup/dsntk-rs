@@ -1993,18 +1993,16 @@ pub fn eval_ternary_equality(lhs: &Value, rhs: &Value) -> Option<bool> {
       Value::Context(rs) => {
         if ls.keys().len() == rs.keys().len() {
           for (key1, value1) in ls.deref() {
-            if let Some(value2) = rs.get_entry(key1) {
-              if let Some(equal) = eval_ternary_equality(value1, value2) {
-                if !equal {
-                  return Some(false); // values in entries are NOT EQUAL
-                }
-              } else {
-                // values in entries can not be compared
-                return None;
-              }
-            } else {
+            let Some(value2) = rs.get_entry(key1) else {
               // there is no such key in the right-side context
               return Some(false);
+            };
+            let Some(equal) = eval_ternary_equality(value1, value2) else {
+              // values in entries can not be compared
+              return None;
+            };
+            if !equal {
+              return Some(false); // values in entries are NOT EQUAL
             }
           }
           // contexts are EQUAL

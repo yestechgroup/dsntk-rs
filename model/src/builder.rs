@@ -79,11 +79,9 @@ use dsntk_common::{gen_id, Uri};
 use dsntk_feel::{FeelType, Name};
 
 use crate::model::{
-  AuthorityRequirement, BuiltinAggregator, Binding, BusinessKnowledgeModel, Decision,
-  DecisionService, DecisionRule, DecisionTable, DecisionTableOrientation, ExpressionInstance,
-  FunctionDefinition, FunctionKind, HitPolicy, InformationItem, InformationRequirement, InputClause,
-  InputData, Invocation, ItemDefinition, KnowledgeRequirement, KnowledgeSource, LiteralExpression,
-  OutputClause, RuleAnnotationClause, UnaryTests, DmnId, DrgElement, Definitions,
+  AuthorityRequirement, Binding, BuiltinAggregator, BusinessKnowledgeModel, Decision, DecisionRule, DecisionService, DecisionTable, DecisionTableOrientation, Definitions, DmnId,
+  DrgElement, ExpressionInstance, FunctionDefinition, FunctionKind, HitPolicy, InformationItem, InformationRequirement, InputClause, InputData, Invocation, ItemDefinition,
+  KnowledgeRequirement, KnowledgeSource, LiteralExpression, OutputClause, RuleAnnotationClause, UnaryTests,
 };
 use dsntk_common::HRef;
 
@@ -385,13 +383,7 @@ impl InformationItem {
 impl InputData {
   /// Builds an input data element with the specified identifier, name,
   /// description, and type.
-  pub fn build(
-    id: Option<&str>,
-    name: impl Into<String>,
-    description: Option<&str>,
-    type_ref: impl Into<String>,
-    feel_type: Option<FeelType>,
-  ) -> Self {
+  pub fn build(id: Option<&str>, name: impl Into<String>, description: Option<&str>, type_ref: impl Into<String>, feel_type: Option<FeelType>) -> Self {
     let name = name.into();
     Self {
       namespace: "".to_string(),
@@ -422,7 +414,7 @@ impl KnowledgeSource {
       extension_elements: vec![],
       extension_attributes: vec![],
       feel_name: Name::from(name.clone()),
-      name: name.into(),
+      name,
       authority_requirements: vec![],
     }
   }
@@ -452,7 +444,7 @@ impl ItemDefinition {
       extension_elements: vec![],
       extension_attributes: vec![],
       feel_name: Name::from(name.clone()),
-      name: name.into(),
+      name,
       type_language: None,
       feel_type,
       allowed_values,
@@ -516,21 +508,14 @@ impl Binding {
   /// Builds a binding of the specified parameter to the specified
   /// binding formula.
   pub fn build(parameter: InformationItem, binding_formula: Option<ExpressionInstance>) -> Self {
-    Self {
-      parameter,
-      binding_formula,
-    }
+    Self { parameter, binding_formula }
   }
 }
 
 impl FunctionDefinition {
   /// Builds a function definition with the specified parameters, body,
   /// and kind.
-  pub fn build(
-    formal_parameters: Vec<InformationItem>,
-    body: Option<ExpressionInstance>,
-    kind: FunctionKind,
-  ) -> Self {
+  pub fn build(formal_parameters: Vec<InformationItem>, body: Option<ExpressionInstance>, kind: FunctionKind) -> Self {
     Self {
       namespace: "".to_string(),
       model_name: "".to_string(),
@@ -607,7 +592,7 @@ impl Decision {
       extension_elements: vec![],
       extension_attributes: vec![],
       feel_name: Name::from(name.clone()),
-      name: name.into(),
+      name,
       question: None,
       allowed_answers: None,
       variable,
@@ -697,7 +682,7 @@ impl DecisionService {
       extension_elements: vec![],
       extension_attributes: vec![],
       feel_name: Name::from(name.clone()),
-      name: name.into(),
+      name,
       variable,
       output_decisions,
       encapsulated_decisions,

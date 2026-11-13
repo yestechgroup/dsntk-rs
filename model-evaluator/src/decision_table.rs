@@ -473,7 +473,7 @@ mod tests {
   use dsntk_examples::decision_tables::H_000210;
   use dsntk_feel::values::Value;
   use dsntk_feel::{value_number, FeelNumber};
-  use dsntk_model::{DecisionTable, DmnElement};
+  use dsntk_model::DecisionTable;
 
   #[test]
   fn test() {

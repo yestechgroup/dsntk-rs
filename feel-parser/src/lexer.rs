@@ -1151,8 +1151,23 @@ fn hex_to_decimal(ch: char) -> u64 {
 /// of` keyword form still lexes correctly, because the keyword dispatch
 /// runs before any name consumption starts.
 const RESERVED_KEYWORDS: [&str; 17] = [
-  "and", "between", "else", "every", "external", "false", "for", "if", "instance", "not", "null",
-  "or", "return", "satisfies", "some", "then", "true",
+  "and",
+  "between",
+  "else",
+  "every",
+  "external",
+  "false",
+  "for",
+  "if",
+  "instance",
+  "not",
+  "null",
+  "or",
+  "return",
+  "satisfies",
+  "some",
+  "then",
+  "true",
 ];
 
 /// The multi-word FEEL names — the only names a reserved keyword (`and`)

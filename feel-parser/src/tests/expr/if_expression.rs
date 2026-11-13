@@ -265,4 +265,3 @@ fn _9999_default_scope_repro() {
     assert!(parsed.is_ok(), "expected `{input}` to parse with a default scope: {parsed:?}");
   }
 }
-

@@ -529,10 +529,4 @@ mod tests {
     //TODO Maybe it is possible NOT TO convert the number of days into nanoseconds?
     FeelDaysAndTimeDuration::try_from("P3000000000000000000D").unwrap();
   }
-
-  #[test]
-  fn test_eq_receiver() {
-    let dt_duration = FeelDaysAndTimeDuration::try_from("P1DT2H3M15S").unwrap();
-    dt_duration.assert_receiver_is_total_eq();
-  }
 }

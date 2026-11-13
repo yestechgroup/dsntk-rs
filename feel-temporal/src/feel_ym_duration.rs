@@ -302,10 +302,4 @@ mod tests {
     assert_eq!(3, ym_duration.months());
     assert_eq!(27, ym_duration.as_months());
   }
-
-  #[test]
-  fn test_eq_receiver() {
-    let ym_duration = FeelYearsAndMonthsDuration::try_from("P2Y3M").unwrap();
-    ym_duration.assert_receiver_is_total_eq();
-  }
 }

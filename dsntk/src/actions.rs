@@ -1246,7 +1246,7 @@ fn list_types(dir: &str, check_only: bool) {
           return;
         }
         let mut entries: Vec<_> = registry.iter().collect();
-        entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        entries.sort_by_key(|(a, _)| a.to_string());
         for (name, entry) in &entries {
           let source = match &entry.source {
             dsntk_type_registry::TypeSource::Primitive => "<primitive>".to_string(),
