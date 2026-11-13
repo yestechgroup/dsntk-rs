@@ -5,6 +5,9 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::missing_crate_level_docs)]
+// The recognizer's table traversal walks a character grid by row and
+// column indexes — the bounded index loops read clearest as indexes.
+#![allow(clippy::needless_range_loop)]
 
 #[macro_use]
 extern crate dsntk_macros;

@@ -47,24 +47,18 @@ pub fn prepare_test_cases(input: &str) -> Result<Vec<(FeelContext, Value)>> {
   if let Some(separator) = detect_separator(input) {
     let scope = FeelScope::default();
     for unary_tests in split_test_cases(input, &separator) {
-      match dsntk_feel_parser::parse_unary_tests(&scope, unary_tests, false) {
-        Ok(ast_node) => match ast_node {
-          AstNode::ExpressionList(nodes) => {
-            if nodes.len() == 2 {
-              match dsntk_feel_evaluator::evaluate_context_node(&scope, &nodes[0]) {
-                Ok(input_data) => {
-                  let expected_result = dsntk_feel_evaluator::evaluate(&scope, &nodes[1]);
-                  test_cases.push((input_data, expected_result));
-                }
-                Err(reason) => return Err(reason),
-              }
-            } else {
-              return Err(err_expected_two_elements_in_expression_list(nodes.len()));
-            }
+      let ast_node = dsntk_feel_parser::parse_unary_tests(&scope, unary_tests, false)?;
+      match ast_node {
+        AstNode::ExpressionList(nodes) => {
+          if nodes.len() == 2 {
+            let input_data = dsntk_feel_evaluator::evaluate_context_node(&scope, &nodes[0])?;
+            let expected_result = dsntk_feel_evaluator::evaluate(&scope, &nodes[1]);
+            test_cases.push((input_data, expected_result));
+          } else {
+            return Err(err_expected_two_elements_in_expression_list(nodes.len()));
           }
-          other => return Err(err_expected_expression_list(&other)),
-        },
-        Err(reason) => return Err(reason),
+        }
+        other => return Err(err_expected_expression_list(&other)),
       }
     }
   }

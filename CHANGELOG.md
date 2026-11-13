@@ -156,3 +156,54 @@ that do not work, please [file an issue](https://github.com/DecisionToolkit/dsnt
 - [x] **DecisionToolkit** is the successor of the [DMNTK](https://github.com/dmntk) project.
 - [x] Full DMN 1.3 conformance.
 - [x] Initial release.
+
+## Unreleased — FEEL conditional-expression fix (yestechgroup/dsntk-rs#14)
+
+### Fixed
+
+- **FEEL parser: conditional (`if`) expressions accept the full DMN FEEL
+  grammar.** The lexer no longer glues FEEL reserved keywords (`then`,
+  `else`, `and`, `or`, `not`, …) into whitespace-separated multi-part
+  names, so `if eligible then 1 else 2`, `if a and b then "x" else "y"`,
+  and nested conditionals parse correctly even with an empty parsing
+  scope. Gluing still happens when the joined name is registered in the
+  parsing scope, when it continues one of the fixed multi-word FEEL names
+  (`date and time`, `years and months duration`, `days and time
+  duration`), or when the extended name ends right before a colon (a
+  context-entry key like `{one and two: 1}`).
+
+### Changed
+
+- **`not` is a keyword inside `if` expression conditions (and unary
+  tests).** `if not eligible then 1 else 2` lexes the negation keyword;
+  the grammar lowers it to the built-in `not(…)` function invocation.
+  Outside conditions `not` stays a name, so the `not(…)` invocation keeps
+  working unchanged.
+- **Behavior change for multi-word names containing reserved keywords.**
+  A name like `one and two` or `values in a list` now requires the name
+  to be registered in the parsing scope (the usual case when evaluating
+  against a context), to end right before a colon (context-entry key
+  position), or to be escaped by the calling tool. `x in y` comparisons
+  with a bare name on the right keep the historical names-first lexing.
+  `instance of` and the `function`/`context`/`range`/`list` keywords are
+  unaffected — their recognition was already character-gated.
+
+## Unreleased — programmatic model construction and evaluation traces
+
+### Added
+
+- **`dsntk_model::builder`** — a public builder API for programmatic DMN
+  model construction: `DefinitionsBuilder` assembles item definitions and
+  DRG elements into one `Definitions` (propagating the namespace and the
+  model name into every contained element), and every DRG element type
+  plus the expression types a decision or a business knowledge model
+  carries exposes a `build` constructor. `DecisionTable::build` accepts
+  an explicit identifier, so a table lowered for one decision carries
+  that decision's identifier. A model assembled with the API evaluates
+  through `ModelEvaluator::evaluate_invocable` exactly like a parsed
+  model.
+- **`dsntk_model_evaluator::trace`** — decision-table provenance: during
+  one evaluation, every evaluated decision table records the numbers of
+  the rules that matched. `ModelEvaluator::evaluate_invocable_traced`
+  returns the evaluation's result together with the collected
+  `TableTrace` entries (table identifier + matched rule numbers).

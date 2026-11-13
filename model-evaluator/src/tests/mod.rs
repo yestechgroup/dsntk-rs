@@ -8,6 +8,7 @@ use std::fs;
 use std::sync::{Arc, LazyLock};
 use walkdir::WalkDir;
 
+mod builder;
 mod compatibility;
 mod exhaustive;
 mod input_data;

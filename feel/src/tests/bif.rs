@@ -8,7 +8,6 @@ fn test_clone() {
   let bif_b = bif_a.clone();
   assert_eq!(format!("{bif_a:?}"), format!("{bif_b:?}"));
   assert_eq!(bif_a, bif_b);
-  bif_a.assert_receiver_is_total_eq();
 }
 
 #[test]

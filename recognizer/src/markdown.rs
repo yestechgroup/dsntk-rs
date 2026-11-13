@@ -358,14 +358,8 @@ fn get_rule_numbers<'a>(columns: impl Iterator<Item = &'a Option<String>>) -> Ve
 fn monotonic_numbers(list: Vec<usize>) -> (bool, usize, usize) {
   let position = list.iter().position(|&x| x != 0);
   match position {
-    Some(index) => {
-      if list[index..].iter().enumerate().all(|(i, &value)| value == i + 1) {
-        (true, index, list[index..].len())
-      } else {
-        (false, 0, 0)
-      }
-    }
-    None => (false, 0, 0),
+    Some(index) if list[index..].iter().enumerate().all(|(i, &value)| value == i + 1) => (true, index, list[index..].len()),
+    Some(_) | None => (false, 0, 0),
   }
 }
 

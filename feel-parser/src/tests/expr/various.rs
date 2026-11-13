@@ -210,7 +210,11 @@ fn _0002() {
 #[test]
 fn _0003() {
   let input = r#"Flights[ From = Original Flight.From and To = Original Flight.To and Departure > Original Flight.Departure and Status = "scheduled" and has capacity(item, Reassigned Passengers List)][1]"#;
-  // this test should fail without properly set scope
-  let node = Parser::new(&scope!(), StartExpression, input, false).parse();
-  assert!(node.is_err());
+  // Since the FEEL reserved keywords (`and`, `or`, `then`, …) are no longer
+  // glued into multi-part names, this expression parses correctly even
+  // without a scope with registered names — the conjunctions terminate the
+  // names instead of being swallowed by them.
+  let scope = scope!();
+  let mut node = Parser::new(&scope, StartExpression, input, false);
+  assert!(node.parse().is_ok());
 }
