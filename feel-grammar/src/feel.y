@@ -44,14 +44,17 @@
 %nonassoc EQ NE LT LE GT GE
 %precedence BETWEEN
 %precedence BETWEEN_AND
+%precedence RIGHT_PAREN
+%precedence POSITIVE_UNARY_TESTS
 %right IN
 %left MINUS PLUS
 %left MUL DIV
 %left EXP
+%precedence PREC_NOT
 %precedence PREC_NEG
 %precedence INSTANCE
 %precedence NAME NAME_DATE_TIME BUILT_IN_TYPE_NAME
-%precedence LEFT_PAREN RIGHT_PAREN LEFT_BRACKET RIGHT_BRACKET
+%precedence LEFT_PAREN LEFT_BRACKET RIGHT_BRACKET
 %precedence ELLIPSIS
 %precedence DOT
 
@@ -82,7 +85,8 @@ boxed_expression:
 
 textual_expression:
     FOR {/* for_begin */} iteration_contexts RETURN expression {/* for */}
-  | IF expression THEN expression ELSE expression {/* if */}
+  | IF {/* if_condition_begin */} expression THEN expression ELSE expression {/* if */}
+  | NOT expression %prec PREC_NOT {/* not_negation */}
   | SOME {/* some_begin */} quantified_expressions SATISFIES expression {/* some */}
   | EVERY {/* every_begin */} quantified_expressions SATISFIES expression {/* every */}
   | expression BETWEEN {/* between_begin */} expression BETWEEN_AND expression {/* between */}
@@ -125,7 +129,7 @@ unary_tests:
 
 positive_unary_tests:
     expression COMMA positive_unary_tests {/* expression_list_tail */}
-  | expression {/* expression_list_tail */}
+  | expression %prec POSITIVE_UNARY_TESTS {/* expression_list_tail */}
   ;
 
 comparison_in:

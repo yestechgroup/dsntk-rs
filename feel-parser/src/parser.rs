@@ -260,6 +260,25 @@ impl ReduceActions for Parser<'_> {
     Ok(())
   }
 
+  fn action_if_condition_begin(&mut self) -> Result<()> {
+    trace_action!(self, "if_condition_begin");
+    self.yy_lexer.set_if_condition();
+    Ok(())
+  }
+
+  /// Builds the negation of a conditional expression: the `not` keyword
+  /// applied to an expression is the built-in function `not(…)` invoked
+  /// with that expression as the only parameter.
+  fn action_not_negation(&mut self) -> Result<()> {
+    trace_action!(self, "not_negation");
+    let rhs = self.yy_node_stack.pop().unwrap();
+    let lhs = AstNode::Name(Name::from("not"));
+    self
+      .yy_node_stack
+      .push(AstNode::FunctionInvocation(Box::new(lhs), Box::new(AstNode::PositionalParameters(vec![rhs]))));
+    Ok(())
+  }
+
   fn action_built_in_type_name(&mut self) -> Result<()> {
     trace_action!(self, "built_in_type_name");
     if let TokenValue::BuiltInTypeName(name) = &self.yy_value_stack[self.yy_value_stack.len() - 1] {
@@ -685,6 +704,7 @@ impl ReduceActions for Parser<'_> {
   /// Reduces `if` expression.
   fn action_if(&mut self) -> Result<()> {
     trace_action!(self, "if");
+    self.yy_lexer.clear_if_condition();
     let rhs = self.yy_node_stack.pop().unwrap();
     let mid = self.yy_node_stack.pop().unwrap();
     let lhs = self.yy_node_stack.pop().unwrap();

@@ -562,12 +562,12 @@ fn _0020() {
   accept(
     &scope,
     StartBoxedExpression,
-    r#"{Another Date and Time: "2018-07-30"}"#,
+    r#"{Another Start Date: "2018-07-30"}"#,
     r#"
        Context
        └─ ContextEntry
           ├─ ContextEntryKey
-          │  └─ `Another Date and Time`
+          │  └─ `Another Start Date`
           └─ String
              └─ `2018-07-30`
     "#,

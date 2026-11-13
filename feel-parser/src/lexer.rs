@@ -101,6 +101,13 @@ pub struct Lexer<'lexer> {
   /// Token `not` is a keyword at the very beginning of the unary tests rule,
   /// in all other contexts it is just a name.
   unary_tests: bool,
+  /// Flag indicating if the lexer is inside an `if` expression condition
+  /// (or its `else` branch). Inside a condition the `not` keyword applies
+  /// to the whole following expression, so `if not eligible then …` lexes
+  /// `not` as the negation keyword even when no name is registered in the
+  /// parsing scope. Outside conditions (and unary tests) `not` stays a
+  /// name, so the built-in function invocation `not(…)` keeps working.
+  if_condition: bool,
   /// Flag indicating if the `between` keyword was encountered.
   /// When this flag is set, the next `and` token is returned as `band` keyword,
   /// otherwise it is returned as `and`. This allows to disambiguate the `and`
@@ -123,6 +130,7 @@ impl<'lexer> Lexer<'lexer> {
       input: input.chars().collect(),
       position: 0,
       unary_tests: false,
+      if_condition: false,
       between: false,
       type_name: false,
       till_in: false,
@@ -131,6 +139,17 @@ impl<'lexer> Lexer<'lexer> {
 
   pub fn set_unary_tests(&mut self) {
     self.unary_tests = true;
+  }
+
+  /// Sets the `if` condition flag when the lexer enters the condition (or
+  /// the `else` branch) of an `if` expression.
+  pub fn set_if_condition(&mut self) {
+    self.if_condition = true;
+  }
+
+  /// Clears the `if` condition flag when the `if` expression is complete.
+  pub fn clear_if_condition(&mut self) {
+    self.if_condition = false;
   }
 
   pub fn set_between(&mut self) {
@@ -260,7 +279,7 @@ impl<'lexer> Lexer<'lexer> {
         self.position += 3;
         Ok((TokenType::For, TokenValue::For))
       }
-      ['n', 'o', 't', ch, _, _, _, _, _, _, _, _] if self.unary_tests && is_keyword_not_separator(ch) => {
+      ['n', 'o', 't', ch, _, _, _, _, _, _, _, _] if (self.unary_tests || self.if_condition) && is_keyword_not_separator(ch) => {
         self.position += 3;
         Ok((TokenType::Not, TokenValue::Not))
       }
@@ -625,6 +644,19 @@ impl<'lexer> Lexer<'lexer> {
         }
         2 => {
           if self.is_next_name_part_char() {
+            // The word starting after the whitespace would glue into the
+            // name being consumed. A FEEL reserved keyword is never part
+            // of a multi-part name — so in that case the name ends right
+            // here and the word is re-lexed as a keyword token. Gluing
+            // still happens when the joined name is registered in the
+            // parsing scope (or extends a registered name), or when it
+            // continues one of the known multi-word FEEL names
+            // (`date and time`, `years and months duration`,
+            // `days and time duration`).
+            if self.glues_reserved_keyword(&parts) {
+              self.position = consumed_positions[consumed_positions.len() - 1] + 1;
+              break;
+            }
             state = 3;
           } else if self.is_next_additional_name_symbol() {
             state = 4;
@@ -893,6 +925,75 @@ impl<'lexer> Lexer<'lexer> {
     }
   }
 
+  /// Returns `true` when the whitespace-separated word starting after the
+  /// current position is a FEEL reserved keyword that would glue into the
+  /// name accumulated so far — and gluing it is not justified by the
+  /// parsing scope (the joined name matching or extending a registered
+  /// name) or by one of the known multi-word FEEL names.
+  fn glues_reserved_keyword(&self, parts: &[String]) -> bool {
+    // Collect the word starting after the current position (the current
+    // character is the whitespace separating the two words).
+    let mut word = String::new();
+    let mut offset = 1;
+    while let Some(ch) = self.char_at(offset) {
+      if is_name_part_char(ch) {
+        word.push(ch);
+        offset += 1;
+      } else {
+        break;
+      }
+    }
+    if word.is_empty() {
+      return false;
+    }
+    // Join the accumulated name parts with the word and compare the
+    // candidate the same way the longest-name matching loop below does.
+    let mut candidate = parts.to_vec();
+    candidate.push(word.clone());
+    let joined = flatten_name_parts(&candidate);
+    if self.scope.flattened().iter().any(|name| name.starts_with(joined.as_str())) {
+      return false;
+    }
+    if MULTI_WORD_NAMES.iter().any(|name| name.starts_with(joined.as_str())) {
+      return false;
+    }
+    // A reserved word still continues the name when the whole extended
+    // name (the accumulated parts, the reserved word, and every further
+    // word up to the next non-name character) is immediately followed by
+    // a colon — the context-entry key position. A context key is a name
+    // alone in that position, so `{one and two: 1}` lexes the key
+    // `one and two` even when no name is registered in the scope.
+    if self.extends_context_key() {
+      return false;
+    }
+    RESERVED_KEYWORDS.contains(&word.as_str())
+  }
+
+  /// Returns `true` when, starting after the current position (the
+  /// whitespace before the next word), the maximal run of words, name
+  /// parts, and additional name symbols ends right before a colon.
+  fn extends_context_key(&self) -> bool {
+    let mut offset = 1;
+    loop {
+      // consume the word starting at `offset`
+      while matches!(self.char_at(offset), Some(ch) if is_name_part_char(ch)) {
+        offset += 1;
+      }
+      // skip the whitespace separating words
+      while matches!(self.char_at(offset), Some(ch) if is_whitespace(ch)) {
+        offset += 1;
+      }
+      match self.char_at(offset) {
+        Some(':') => return true,
+        Some(ch) if is_name_start_char(ch) => offset += 1,
+        // additional name symbols (`.`, `/`, `-`, `+`, `*`, `'`) glue
+        // into the name and may precede another word (`night+and+day:`)
+        Some(ch) if is_additional_name_symbol(ch) => offset += 1,
+        _ => return false,
+      }
+    }
+  }
+
   /// Returns **true* when the next character on input is the additional name symbol.
   fn is_next_additional_name_symbol(&self) -> bool {
     if let Some(ch) = self.char_at(1) {
@@ -1035,7 +1136,31 @@ fn hex_to_decimal(ch: char) -> u64 {
   }
 }
 
-/// Joins the parts of the name with single whitespace separator. Every part is trimmed
+/// FEEL reserved keywords — words that the lexer recognizes as keyword
+/// tokens and that are never part of a multi-part name (DMN 1.5,
+/// section 10.3.2). When such a word follows a whitespace-separated name,
+/// the name ends right before it, so `if eligible then 1 else 2` lexes
+/// the name `eligible` and the keyword `then` even when neither name is
+/// registered in the parsing scope.
+///
+/// The words `function`, `context`, `range`, and `list` are not on the
+/// list — their keyword recognition is gated on the following character
+/// (a `(` or `<` separator), so they cannot mis-lex as keywords inside or
+/// after a name. The word `of` is not on the list either — it commonly
+/// appears inside multi-part names (`Date of Birth`), and the `instance
+/// of` keyword form still lexes correctly, because the keyword dispatch
+/// runs before any name consumption starts.
+const RESERVED_KEYWORDS: [&str; 17] = [
+  "and", "between", "else", "every", "external", "false", "for", "if", "instance", "not", "null",
+  "or", "return", "satisfies", "some", "then", "true",
+];
+
+/// The multi-word FEEL names — the only names a reserved keyword (`and`)
+/// may continue, so the temporal function and duration type names keep
+/// lexing as single names.
+const MULTI_WORD_NAMES: [&str; 3] = ["date and time", "years and months duration", "days and time duration"];
+
+/// Joins name parts into a single name: each part is trimmed and stripped
 /// from additional whitespaces at both sides. The final string is also trimmed.
 /// After trimming, spaces around additional characters (`.`,`/`,`-`,`'`,`+`,`*`) are removed.
 fn flatten_name_parts(parts: &[String]) -> String {
