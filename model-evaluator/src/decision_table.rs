@@ -5,7 +5,7 @@ use dsntk_feel::context::FeelContext;
 use dsntk_feel::values::Value;
 use dsntk_feel::{value_null, Evaluator, FeelScope, Name};
 use dsntk_feel_parser::AstNode;
-use dsntk_model::{BuiltinAggregator, DecisionTable, HitPolicy};
+use dsntk_model::{BuiltinAggregator, DecisionTable, DmnElement, HitPolicy};
 use std::cmp::Ordering;
 
 /// Checks if an AST node contains comparison expressions that should be evaluated directly
@@ -435,8 +435,19 @@ fn evaluate_parsed_decision_table(scope: &FeelScope, parsed_decision_table: &Par
 pub fn build_decision_table_evaluator(scope: &FeelScope, decision_table: &DecisionTable) -> Result<Evaluator> {
   let hit_policy = decision_table.hit_policy();
   let parsed_decision_table = parse_decision_table(scope, decision_table)?;
+  let table_id = DmnElement::id(decision_table).clone();
   Ok(Box::new(move |scope: &FeelScope| {
     let evaluated_decision_table = evaluate_parsed_decision_table(scope, &parsed_decision_table);
+    crate::trace::record_table_trace(
+      &table_id,
+      evaluated_decision_table
+        .evaluated_rules
+        .iter()
+        .enumerate()
+        .filter(|(_, evaluated_rule)| evaluated_rule.matches)
+        .map(|(rule_number, _)| rule_number)
+        .collect(),
+    );
     match hit_policy {
       HitPolicy::Unique => evaluated_decision_table.evaluate_hit_policy_unique(),
       HitPolicy::Any => evaluated_decision_table.evaluate_hit_policy_any(),
@@ -462,7 +473,7 @@ mod tests {
   use dsntk_examples::decision_tables::H_000210;
   use dsntk_feel::values::Value;
   use dsntk_feel::{value_number, FeelNumber};
-  use dsntk_model::DecisionTable;
+  use dsntk_model::{DecisionTable, DmnElement};
 
   #[test]
   fn test() {

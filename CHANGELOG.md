@@ -187,3 +187,23 @@ that do not work, please [file an issue](https://github.com/DecisionToolkit/dsnt
   with a bare name on the right keep the historical names-first lexing.
   `instance of` and the `function`/`context`/`range`/`list` keywords are
   unaffected — their recognition was already character-gated.
+
+## Unreleased — programmatic model construction and evaluation traces
+
+### Added
+
+- **`dsntk_model::builder`** — a public builder API for programmatic DMN
+  model construction: `DefinitionsBuilder` assembles item definitions and
+  DRG elements into one `Definitions` (propagating the namespace and the
+  model name into every contained element), and every DRG element type
+  plus the expression types a decision or a business knowledge model
+  carries exposes a `build` constructor. `DecisionTable::build` accepts
+  an explicit identifier, so a table lowered for one decision carries
+  that decision's identifier. A model assembled with the API evaluates
+  through `ModelEvaluator::evaluate_invocable` exactly like a parsed
+  model.
+- **`dsntk_model_evaluator::trace`** — decision-table provenance: during
+  one evaluation, every evaluated decision table records the numbers of
+  the rules that matched. `ModelEvaluator::evaluate_invocable_traced`
+  returns the evaluation's result together with the collected
+  `TableTrace` entries (table identifier + matched rule numbers).

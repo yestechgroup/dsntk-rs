@@ -15,13 +15,7 @@ use dsntk_model::*;
 /// exposing the decision.
 fn built_definitions() -> Definitions {
   DefinitionsBuilder::new("Assessment", "https://example.com/assessment")
-    .input_data(InputData::build(
-      Some("amount"),
-      "amount",
-      None,
-      "number",
-      Some(FeelType::Number),
-    ))
+    .input_data(InputData::build(Some("amount"), "amount", None, "number", Some(FeelType::Number)))
     .business_knowledge_model(BusinessKnowledgeModel::build(
       Some("calculate_double"),
       "calculate_double",
@@ -31,9 +25,7 @@ fn built_definitions() -> Definitions {
       vec![InformationItem::build("rate", "number", Some(FeelType::Number))],
       FunctionDefinition::build(
         vec![],
-        Some(ExpressionInstance::LiteralExpression(Box::new(
-          LiteralExpression::build("rate * 2"),
-        ))),
+        Some(ExpressionInstance::LiteralExpression(Box::new(LiteralExpression::build("rate * 2")))),
         FunctionKind::Feel,
       ),
     ))
@@ -46,9 +38,7 @@ fn built_definitions() -> Definitions {
         ExpressionInstance::LiteralExpression(Box::new(LiteralExpression::build("calculate_double"))),
         vec![Binding::build(
           InformationItem::build("rate", "number", Some(FeelType::Number)),
-          Some(ExpressionInstance::LiteralExpression(Box::new(
-            LiteralExpression::build("amount"),
-          ))),
+          Some(ExpressionInstance::LiteralExpression(Box::new(LiteralExpression::build("amount")))),
         )],
       )))),
       vec![InformationRequirement::build(None, Some(HRef::try_from("#amount").unwrap()))],
@@ -88,14 +78,88 @@ fn built_model_evaluates_through_the_decision_service() {
   let evaluator = ModelEvaluator::new(&[definitions]).expect("model evaluator builds");
   let mut input_data = FeelContext::default();
   input_data.set_entry(&Name::from("amount"), Value::Number("21".parse().unwrap()));
-  let value = evaluator.evaluate_invocable(
-    "https://example.com/assessment",
-    "Assessment",
-    "DoubleIt",
-    &input_data,
-  );
+  let value = evaluator.evaluate_invocable("https://example.com/assessment", "Assessment", "DoubleIt", &input_data);
   match value {
     Value::Number(number) => assert_eq!(number.to_string(), "42"),
     other => panic!("expected the number 42 from the decision service, got: {other:?}"),
+  }
+}
+
+/// Builds a table-driven model: one input, one decision whose logic is a
+/// two-rule decision table (unique hit policy), and a service exposing it.
+/// Rule 0: amount < 100 → "low". Rule 1: amount >= 100 → "high".
+fn built_table_definitions() -> Definitions {
+  use dsntk_model::{AnnotationEntry, DecisionRule, DecisionTable, DecisionTableOrientation, HitPolicy, InputClause, InputEntry, OutputClause, OutputEntry};
+  let decision_table = DecisionTable::build(
+    Some("band_decision"),
+    None,
+    vec![InputClause {
+      input_expression: "amount".to_string(),
+      allowed_input_values: None,
+    }],
+    vec![OutputClause {
+      type_ref: None,
+      name: Some("band".to_string()),
+      allowed_output_values: None,
+      default_output_entry: None,
+    }],
+    vec![],
+    vec![
+      DecisionRule {
+        input_entries: vec![InputEntry { text: "< 100".to_string() }],
+        output_entries: vec![OutputEntry { text: "\"low\"".to_string() }],
+        annotation_entries: vec![],
+      },
+      DecisionRule {
+        input_entries: vec![InputEntry { text: ">= 100".to_string() }],
+        output_entries: vec![OutputEntry { text: "\"high\"".to_string() }],
+        annotation_entries: vec![],
+      },
+    ],
+    HitPolicy::Unique,
+    None,
+    DecisionTableOrientation::RuleAsRow,
+    None,
+  );
+  DefinitionsBuilder::new("Bands", "https://example.com/bands")
+    .input_data(InputData::build(Some("amount"), "amount", None, "number", Some(FeelType::Number)))
+    .decision(Decision::build(
+      Some("band_decision"),
+      "band_decision",
+      None,
+      InformationItem::build("band_decision", "string", Some(FeelType::String)),
+      Some(ExpressionInstance::DecisionTable(Box::new(decision_table))),
+      vec![InformationRequirement::build(None, Some(HRef::try_from("#amount").unwrap()))],
+      vec![],
+      vec![],
+    ))
+    .decision_service(DecisionService::build(
+      Some("BandIt"),
+      "BandIt",
+      None,
+      InformationItem::build("BandIt", "string", None),
+      vec![HRef::try_from("#amount").unwrap()],
+      vec![],
+      vec![HRef::try_from("#band_decision").unwrap()],
+      // The output decisions are a subset of the encapsulated ones — the
+      // builder passes only the NOT-exposed encapsulated decisions, so a
+      // decision never evaluates twice within one service invocation.
+      vec![],
+    ))
+    .build()
+}
+
+#[test]
+fn table_traces_record_the_matching_rule_numbers() {
+  let definitions = built_table_definitions();
+  let evaluator = ModelEvaluator::new(&[definitions]).expect("model evaluator builds");
+  for (amount, expected_rule) in [("5", 0_usize), ("500", 1_usize)] {
+    let mut input_data = FeelContext::default();
+    input_data.set_entry(&Name::from("amount"), Value::Number(amount.parse().unwrap()));
+    let (value, traces) = evaluator.evaluate_invocable_traced("https://example.com/bands", "Bands", "BandIt", &input_data);
+    assert!(matches!(value, Value::String(_)), "expected a string band, got: {value:?}");
+    assert_eq!(traces.len(), 1, "exactly one decision table evaluated");
+    assert_eq!(traces[0].table_id, "band_decision");
+    assert_eq!(traces[0].matched_rules, vec![expected_rule], "amount = {amount}");
   }
 }

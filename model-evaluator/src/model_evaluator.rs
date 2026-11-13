@@ -7,6 +7,7 @@ use crate::input_data::InputDataEvaluator;
 use crate::item_definition::ItemDefinitionEvaluator;
 use crate::model_builder::{EvaluatorBuilders, ModelBuilder};
 use crate::model_definitions::{DefKey, InvocableType, Invocables};
+use crate::trace::TableTrace;
 use dsntk_common::Result;
 use dsntk_feel::context::FeelContext;
 use dsntk_feel::values::Value;
@@ -112,6 +113,14 @@ impl ModelEvaluator {
         self.evaluate_decision_service(def_key, input_data)
       }
     }
+  }
+
+  /// Evaluates an invocable and returns its result together with the
+  /// decision-table traces collected during the evaluation: for every
+  /// evaluated decision table, the numbers of the rules that matched —
+  /// the raw material of decision provenance.
+  pub fn evaluate_invocable_traced(&self, model_namespace: &str, model_name: &str, invocable_name: &str, input_data: &FeelContext) -> (Value, Vec<TableTrace>) {
+    crate::trace::with_trace_sink(|| self.evaluate_invocable(model_namespace, model_name, invocable_name, input_data))
   }
 
   /// Evaluates a decision.
