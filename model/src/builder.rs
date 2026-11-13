@@ -79,9 +79,11 @@ use dsntk_common::{gen_id, Uri};
 use dsntk_feel::{FeelType, Name};
 
 use crate::model::{
-  AuthorityRequirement, Binding, BuiltinAggregator, BusinessKnowledgeModel, Decision, DecisionRule, DecisionService, DecisionTable, DecisionTableOrientation, Definitions, DmnId,
-  DrgElement, ExpressionInstance, FunctionDefinition, FunctionKind, HitPolicy, InformationItem, InformationRequirement, InputClause, InputData, Invocation, ItemDefinition,
-  KnowledgeRequirement, KnowledgeSource, LiteralExpression, OutputClause, RuleAnnotationClause, UnaryTests,
+  AuthorityRequirement, BuiltinAggregator, Binding, BusinessKnowledgeModel, Decision,
+  DecisionService, DecisionRule, DecisionTable, DecisionTableOrientation, ExpressionInstance,
+  FunctionDefinition, FunctionKind, HitPolicy, InformationItem, InformationRequirement, InputClause,
+  InputData, Invocation, ItemDefinition, KnowledgeRequirement, KnowledgeSource, LiteralExpression,
+  OutputClause, RuleAnnotationClause, UnaryTests, DmnId, DrgElement, Definitions,
 };
 use dsntk_common::HRef;
 
@@ -102,7 +104,7 @@ impl DefinitionsBuilder {
   /// Creates a builder for a model with the specified name and namespace.
   pub fn new(name: impl Into<String>, namespace: impl Into<String>) -> Self {
     Self {
-      name,
+      name: name.into(),
       namespace: namespace.into(),
       item_definitions: vec![],
       drg_elements: vec![],
@@ -334,7 +336,7 @@ fn identifier(id: Option<&str>) -> DmnId {
 
 impl DecisionTable {
   /// Builds a decision table with the specified identifier and parts —
-  /// the same shape [DecisionTable::new] produces, with the identifier
+  /// the same shape [`DecisionTable::new`] produces, with the identifier
   /// under the builder's control (provenance traces report the table's
   /// identifier, so a table lowered for one decision carries that
   /// decision's identifier).
@@ -383,7 +385,13 @@ impl InformationItem {
 impl InputData {
   /// Builds an input data element with the specified identifier, name,
   /// description, and type.
-  pub fn build(id: Option<&str>, name: impl Into<String>, description: Option<&str>, type_ref: impl Into<String>, feel_type: Option<FeelType>) -> Self {
+  pub fn build(
+    id: Option<&str>,
+    name: impl Into<String>,
+    description: Option<&str>,
+    type_ref: impl Into<String>,
+    feel_type: Option<FeelType>,
+  ) -> Self {
     let name = name.into();
     Self {
       namespace: "".to_string(),
@@ -414,7 +422,7 @@ impl KnowledgeSource {
       extension_elements: vec![],
       extension_attributes: vec![],
       feel_name: Name::from(name.clone()),
-      name,
+      name: name.into(),
       authority_requirements: vec![],
     }
   }
@@ -442,7 +450,7 @@ impl ItemDefinition {
       extension_elements: vec![],
       extension_attributes: vec![],
       feel_name: Name::from(name.clone()),
-      name,
+      name: name.into(),
       type_language: None,
       feel_type,
       allowed_values,
@@ -456,4 +464,243 @@ impl ItemDefinition {
 
 impl UnaryTests {
   /// Builds unary tests from the specified text.
-  pub fn build(text: impl Into<String>) -
+  pub fn build(text: impl Into<String>) -> Self {
+    Self {
+      text: Some(text.into()),
+      expression_language: None,
+    }
+  }
+}
+
+impl LiteralExpression {
+  /// Builds a literal expression from the specified text.
+  pub fn build(text: impl Into<String>) -> Self {
+    Self {
+      namespace: "".to_string(),
+      model_name: "".to_string(),
+      id: DmnId::Generated(gen_id()),
+      description: None,
+      label: None,
+      extension_elements: vec![],
+      extension_attributes: vec![],
+      text: Some(text.into()),
+      expression_language: None,
+      imported_values: None,
+      type_ref: None,
+    }
+  }
+}
+
+impl Invocation {
+  /// Builds an invocation of the specified function with the specified
+  /// parameter bindings.
+  pub fn build(called_function: ExpressionInstance, bindings: Vec<Binding>) -> Self {
+    Self {
+      namespace: "".to_string(),
+      model_name: "".to_string(),
+      id: DmnId::Generated(gen_id()),
+      description: None,
+      label: None,
+      extension_elements: vec![],
+      extension_attributes: vec![],
+      called_function,
+      bindings,
+      type_ref: None,
+    }
+  }
+}
+
+impl Binding {
+  /// Builds a binding of the specified parameter to the specified
+  /// binding formula.
+  pub fn build(parameter: InformationItem, binding_formula: Option<ExpressionInstance>) -> Self {
+    Self {
+      parameter,
+      binding_formula,
+    }
+  }
+}
+
+impl FunctionDefinition {
+  /// Builds a function definition with the specified parameters, body,
+  /// and kind.
+  pub fn build(
+    formal_parameters: Vec<InformationItem>,
+    body: Option<ExpressionInstance>,
+    kind: FunctionKind,
+  ) -> Self {
+    Self {
+      namespace: "".to_string(),
+      model_name: "".to_string(),
+      id: DmnId::Generated(gen_id()),
+      description: None,
+      label: None,
+      extension_elements: vec![],
+      extension_attributes: vec![],
+      formal_parameters,
+      body,
+      kind,
+      type_ref: None,
+    }
+  }
+}
+
+impl BusinessKnowledgeModel {
+  /// Builds a business knowledge model with the specified identifier,
+  /// name, description, output type, formal parameters, and the
+  /// encapsulated logic (the function the model applies).
+  #[allow(clippy::too_many_arguments)]
+  pub fn build(
+    id: Option<&str>,
+    name: impl Into<String>,
+    description: Option<&str>,
+    output_type_ref: impl Into<String>,
+    output_feel_type: Option<FeelType>,
+    formal_parameters: Vec<InformationItem>,
+    encapsulated_logic: FunctionDefinition,
+  ) -> Self {
+    let mut encapsulated_logic = encapsulated_logic;
+    encapsulated_logic.formal_parameters = formal_parameters;
+    let name = name.into();
+    let variable = information_item(name.clone(), output_type_ref, output_feel_type);
+    Self {
+      namespace: "".to_string(),
+      model_name: "".to_string(),
+      id: identifier(id),
+      description: description.map(|description| description.to_string()),
+      label: None,
+      extension_elements: vec![],
+      extension_attributes: vec![],
+      feel_name: Name::from(name.clone()),
+      name,
+      variable,
+      encapsulated_logic: Some(encapsulated_logic),
+      knowledge_requirements: vec![],
+      authority_requirements: vec![],
+    }
+  }
+}
+
+impl Decision {
+  /// Builds a decision with the specified identifier, name, description,
+  /// output variable, decision logic, and requirements.
+  #[allow(clippy::too_many_arguments)]
+  pub fn build(
+    id: Option<&str>,
+    name: impl Into<String>,
+    description: Option<&str>,
+    variable: InformationItem,
+    decision_logic: Option<ExpressionInstance>,
+    information_requirements: Vec<InformationRequirement>,
+    knowledge_requirements: Vec<KnowledgeRequirement>,
+    authority_requirements: Vec<AuthorityRequirement>,
+  ) -> Self {
+    let name = name.into();
+    Self {
+      namespace: "".to_string(),
+      model_name: "".to_string(),
+      id: identifier(id),
+      description: description.map(|description| description.to_string()),
+      label: None,
+      extension_elements: vec![],
+      extension_attributes: vec![],
+      feel_name: Name::from(name.clone()),
+      name: name.into(),
+      question: None,
+      allowed_answers: None,
+      variable,
+      decision_logic,
+      information_requirements,
+      knowledge_requirements,
+      authority_requirements,
+    }
+  }
+}
+
+impl InformationRequirement {
+  /// Builds an information requirement referencing the required decision
+  /// or the required input data (exactly one of them is expected).
+  pub fn build(required_decision: Option<HRef>, required_input: Option<HRef>) -> Self {
+    Self {
+      namespace: "".to_string(),
+      model_name: "".to_string(),
+      id: DmnId::Generated(gen_id()),
+      description: None,
+      label: None,
+      extension_elements: vec![],
+      extension_attributes: vec![],
+      required_decision,
+      required_input,
+    }
+  }
+}
+
+impl KnowledgeRequirement {
+  /// Builds a knowledge requirement referencing the required business
+  /// knowledge model.
+  pub fn build(required_knowledge: HRef) -> Self {
+    Self {
+      namespace: "".to_string(),
+      model_name: "".to_string(),
+      id: DmnId::Generated(gen_id()),
+      description: None,
+      label: None,
+      extension_elements: vec![],
+      extension_attributes: vec![],
+      required_knowledge,
+    }
+  }
+}
+
+impl AuthorityRequirement {
+  /// Builds an authority requirement referencing the required knowledge
+  /// source, decision, or input data.
+  pub fn build(required_authority: Option<HRef>, required_decision: Option<HRef>, required_input: Option<HRef>) -> Self {
+    Self {
+      namespace: "".to_string(),
+      model_name: "".to_string(),
+      id: DmnId::Generated(gen_id()),
+      description: None,
+      label: None,
+      extension_elements: vec![],
+      extension_attributes: vec![],
+      required_authority,
+      required_decision,
+      required_input,
+    }
+  }
+}
+
+impl DecisionService {
+  /// Builds a decision service with the specified identifier, name,
+  /// description, and the collections of referenced elements.
+  #[allow(clippy::too_many_arguments)]
+  pub fn build(
+    id: Option<&str>,
+    name: impl Into<String>,
+    description: Option<&str>,
+    variable: InformationItem,
+    input_data: Vec<HRef>,
+    input_decisions: Vec<HRef>,
+    output_decisions: Vec<HRef>,
+    encapsulated_decisions: Vec<HRef>,
+  ) -> Self {
+    let name = name.into();
+    Self {
+      namespace: "".to_string(),
+      model_name: "".to_string(),
+      id: identifier(id),
+      description: description.map(|description| description.to_string()),
+      label: None,
+      extension_elements: vec![],
+      extension_attributes: vec![],
+      feel_name: Name::from(name.clone()),
+      name: name.into(),
+      variable,
+      output_decisions,
+      encapsulated_decisions,
+      input_decisions,
+      input_data,
+    }
+  }
+}

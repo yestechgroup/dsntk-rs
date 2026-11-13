@@ -89,7 +89,7 @@ fn built_model_evaluates_through_the_decision_service() {
 /// two-rule decision table (unique hit policy), and a service exposing it.
 /// Rule 0: amount < 100 → "low". Rule 1: amount >= 100 → "high".
 fn built_table_definitions() -> Definitions {
-  use dsntk_model::{AnnotationEntry, DecisionRule, DecisionTable, DecisionTableOrientation, HitPolicy, InputClause, InputEntry, OutputClause, OutputEntry};
+  use dsntk_model::{DecisionRule, DecisionTable, DecisionTableOrientation, HitPolicy, InputClause, InputEntry, OutputClause, OutputEntry};
   let decision_table = DecisionTable::build(
     Some("band_decision"),
     None,
