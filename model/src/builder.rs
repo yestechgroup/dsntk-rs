@@ -430,11 +430,13 @@ impl KnowledgeSource {
 
 impl ItemDefinition {
   /// Builds an item definition with the specified name, type, allowed
-  /// values, and nested components.
+  /// values, and nested components. A component-type item definition (the
+  /// named outputs of a decision) carries no type reference — `None` —
+  /// and only its components.
   pub fn build(
     id: Option<&str>,
     name: impl Into<String>,
-    type_ref: impl Into<String>,
+    type_ref: Option<&str>,
     feel_type: Option<FeelType>,
     allowed_values: Option<UnaryTests>,
     item_components: Vec<ItemDefinition>,
@@ -457,7 +459,7 @@ impl ItemDefinition {
       item_components,
       is_collection,
       function_item: None,
-      type_ref: Some(type_ref.into()),
+      type_ref: type_ref.map(|type_ref| type_ref.to_string()),
     }
   }
 }
